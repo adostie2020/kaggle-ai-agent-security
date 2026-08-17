@@ -59,3 +59,8 @@ def validate_selection(row_id: str) -> None:
 
 def resolve_agent_factory(row_id: str, *, debug_sink: Any = None) -> Callable[[], Any]:
     return build_agent_factory(selection_for(row_id), debug_sink=debug_sink)
+
+
+def resolve_agent_factory_kw(row_id: str, debug_sink: Any = None) -> Callable[[], Any]:
+    """Positional (row_id, debug_sink) adapter for run_repro's `resolve` seam."""
+    return resolve_agent_factory(row_id, debug_sink=debug_sink)
