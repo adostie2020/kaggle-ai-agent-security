@@ -26,15 +26,25 @@ def main() -> int:
 
     # R3: the embed cell must carry all eight embedded destination filenames --
     # the four dev/repro/ sources plus the Phase-1 deps (oracle/trace/agents/attack)
-    # that run_repro.py -> runner.py -> trace.py transitively import. Check each
-    # individually so a regression names the specific file that went missing.
+    # that run_repro.py -> runner.py -> trace.py transitively import. Check against
+    # the embed cell's own source only (not all_src) -- run_repro.py's bare name also
+    # appears in the run cell's hardcoded subprocess path, which would let a dropped
+    # SRC_FILES entry silently pass an all_src check. Identify the embed cell as the
+    # one (and only one) whose source contains "b64decode" so a change to the
+    # builder's cell layout fails loudly instead of silently matching the wrong cell.
+    embed_srcs = [
+        "".join(c["source"]) for c in cells
+        if c["cell_type"] == "code" and "b64decode" in "".join(c["source"])
+    ]
+    assert len(embed_srcs) == 1, f"expected exactly 1 embed cell, found {len(embed_srcs)}"
+    embed_src = embed_srcs[0]
     embedded_names = [
         "debug_sink.py", "models.py", "runner.py", "run_repro.py",
         "oracle.py", "trace.py", "agents.py", "attack.py",
     ]
     for name in embedded_names:
         needle = f"/kaggle/working/repro_pkg/{name}"
-        assert needle in all_src, f"embed cell missing dependency file: {name}"
+        assert needle in embed_src, f"embed cell missing dependency file: {name}"
 
     # R4: the run cell must surface the subprocess's failure (returncode + stderr),
     # not just print stdout.
