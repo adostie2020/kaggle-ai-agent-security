@@ -2,7 +2,7 @@
 
     python dev/repro/run_repro.py --model gemma --candidates 8 \
         --out /kaggle/working/repro --sink-dir /kaggle/working/repro/debug \
-        --weights gemma=/kaggle/input/gemma/model.gguf
+        --weights gemma=/kaggle/input/gemma/hf-snapshot
 
     python dev/repro/run_repro.py --self-check          # weights-free deterministic smoke
 """
@@ -39,7 +39,8 @@ def main() -> int:
     ap.add_argument("--sink-dir", default=None,
                     help="dir for raw per-candidate model debug JSONL (optional)")
     ap.add_argument("--weights", nargs="*", default=None,
-                    help="row=path weight paths, e.g. gemma=/kaggle/input/g/model.gguf")
+                    help="row=path weight paths, e.g. gemma=/kaggle/input/g/hf-snapshot "
+                         "(a local HF Transformers model directory, not a .gguf file)")
     ap.add_argument("--self-check", action="store_true",
                     help="force --model deterministic (weights-free smoke run)")
     ap.add_argument("--no-validate", action="store_true",

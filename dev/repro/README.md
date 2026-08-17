@@ -14,8 +14,9 @@ This harness is **not** a competition submission. It writes no `submission.csv`.
   (driven by `AICOMP_DEBUG_SINK_PATH`). This is the re-sync-proof version of hand-editing
   the vendored agent's `debug_sink` default, and it covers both real agents.
 - `models.py`      — maps a Kaggle row id (`gpt_oss`, `gemma`) to the SDK agent factory,
-  wires GGUF weight paths (`GPT_OSS_MODEL_PATH` / `GEMMA4_MODEL_PATH`), and fail-fast
-  validates the backend. `gemma` defaults to the SDK's `gemma_4` selection.
+  wires local HF Transformers model-directory paths (`GPT_OSS_MODEL_PATH` /
+  `GEMMA4_MODEL_PATH`), and fail-fast validates the backend. `gemma` defaults to the
+  SDK's `gemma_4` selection.
 - `runner.py`      — runs each attack candidate through `trace.trace_chain` and writes
   `candidate_i.json` + `summary.json` (+ optional raw model debug JSONL).
 - `run_repro.py`   — CLI.
@@ -28,8 +29,16 @@ python dev/repro/run_repro.py --self-check --candidates 3 --out dev/repro/_smoke
 Forces the deterministic agent (no weights); proves the whole dump pipeline end to end.
 
 ## Real models
-Locally needs a ≥16 GB GPU + the GGUF weights + `llama_cpp` (none present on the dev box).
-On Kaggle:
+Locally needs a ≥16 GB GPU + a local HF Transformers snapshot + `transformers` (none
+present on the dev box). The `gpt_oss`/`gemma_4` backends are HF `AutoModelForCausalLM`-
+based (`HFChatTemplateBackend`/`HFProcessorChatTemplateBackend.from_pretrained`); they
+never construct a `LlamaCppChatTemplateBackend`, so no GGUF file is ever loaded on this
+path. `*_MODEL_PATH` must point at a local directory holding a full snapshot
+(`config.json`, tokenizer files, `.safetensors`/`.bin` shards) — every backend builder
+hardcodes `local_files_only=True`, not overridable anywhere in `dev/repro/`, so setting
+only `*_MODEL_ID` will not fall back to a Hub download (Kaggle has internet off at
+commit anyway). Practically: attach a Kaggle Dataset/Model containing the full snapshot
+directory and point `*_MODEL_PATH` at it. On Kaggle:
 ```
 python dev/repro/build_repro_notebook.py   # writes repro_notebook.ipynb
 # push with dev/push_kernel.py (adapted: GPU accelerator + weight dataset sources),
@@ -37,8 +46,9 @@ python dev/repro/build_repro_notebook.py   # writes repro_notebook.ipynb
 ```
 
 ## Open items resolved *in-kernel*, not guessed here
-- Exact GGUF source / quantization Kaggle uses, and the `llama.cpp` version → set via the
-  weight datasets you attach + the SDK's backend; confirm against the mounted harness.
+- Exact HF snapshot (revision, dtype) Kaggle uses, and the `transformers` version → set
+  via the weight datasets you attach + the SDK's backend; confirm against the mounted
+  harness.
 - Whether the `gemma` row is SDK `gemma` or `gemma_4` → read the mounted
   `kaggle_evaluation` harness in the kernel; override `REPRO_MODELS["gemma"]` if it differs.
 

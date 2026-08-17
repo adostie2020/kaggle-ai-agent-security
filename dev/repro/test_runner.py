@@ -43,7 +43,16 @@ def main() -> int:
     assert summary["n_candidates"] == n
     assert len(summary["per_candidate"]) == n
 
-    # 2: totals equal oracle's whole-corpus score for the same chains + agent
+    # 2: candidate_0.json's "agent" field names the model row id, not the SDK
+    # factory's __name__ (which trace_chain records and which is always the
+    # useless literal "<lambda>" on the production path -- build_agent_factory's
+    # every branch returns a bare lambda; this test's _det_resolve happens to
+    # return a class with a real __name__, which would mask a regression here
+    # if we only checked "not <lambda>", so assert the exact expected value).
+    candidate_0 = json.loads((out / "candidate_0.json").read_text(encoding="utf-8"))
+    assert candidate_0["agent"] == "deterministic", candidate_0["agent"]
+
+    # 3: totals equal oracle's whole-corpus score for the same chains + agent
     chains = runner.candidate_messages(n)
     oc = oracle.score_corpus(chains, agent_factory=VulnerableDeterministicAgent)
     assert result.total_raw == oc["raw"], (result.total_raw, oc["raw"])

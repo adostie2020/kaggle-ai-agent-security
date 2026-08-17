@@ -4,7 +4,8 @@ unlike the hidden rerun). Mirrors dev/build_notebook.py: repro sources are
 base64-embedded so no source escaping is needed.
 
 This notebook is NOT a competition submission -- it writes no submission.csv.
-Attach the competition data source + the GGUF weight dataset(s) when pushing.
+Attach the competition data source + the HF-format model weight dataset(s) (a local
+Transformers snapshot directory per model) when pushing.
 
 `run_repro.py` imports `runner`, which in turn imports `oracle`, `trace`, and
 (at call time) `attack` -- none of those live under dev/repro/. We embed them
@@ -81,7 +82,7 @@ def build(model: str = "gemma", n_candidates: int = 8,
     weights = weights or {}
     weight_args = " ".join(f"{row}={path}" for row, path in weights.items())
     run_cell = (
-        "import subprocess, sys\n"
+        "import os, subprocess, sys\n"
         "cmd = [sys.executable, '/kaggle/working/repro_pkg/run_repro.py',\n"
         f"       '--model', '{model}', '--candidates', '{n_candidates}',\n"
         "       '--out', '/kaggle/working/repro',\n"
@@ -90,7 +91,12 @@ def build(model: str = "gemma", n_candidates: int = 8,
         "if extra:\n"
         "    cmd += ['--weights'] + extra.split()\n"
         "print('running:', ' '.join(cmd))\n"
-        "proc = subprocess.run(cmd, capture_output=True, text=True)\n"
+        "# The child process does not inherit the PREAMBLE cell's in-memory sys.path\n"
+        "# mutation, so without an explicit PYTHONPATH it dies on `import aicomp_sdk`\n"
+        "# before weights or GPU ever matter. Carry the kernel's current sys.path in.\n"
+        "env = dict(os.environ)\n"
+        "env['PYTHONPATH'] = os.pathsep.join(p for p in sys.path if p)\n"
+        "proc = subprocess.run(cmd, capture_output=True, text=True, env=env)\n"
         "print('returncode:', proc.returncode)\n"
         "print('--- stdout ---')\n"
         "print(proc.stdout)\n"
@@ -98,12 +104,20 @@ def build(model: str = "gemma", n_candidates: int = 8,
         "print(proc.stderr)\n"
     )
     list_cell = (
-        "import os, json\n"
+        "import os\n"
         "root = '/kaggle/working/repro'\n"
-        "for f in sorted(os.listdir(root)):\n"
-        "    print(f)\n"
+        "if os.path.isdir(root):\n"
+        "    for f in sorted(os.listdir(root)):\n"
+        "        print(f)\n"
+        "else:\n"
+        "    print('output dir missing:', root)\n"
+        "summary_path = os.path.join(root, 'summary.json')\n"
         "print('--- summary ---')\n"
-        "print(open(os.path.join(root, 'summary.json')).read())\n"
+        "if os.path.exists(summary_path):\n"
+        "    print(open(summary_path).read())\n"
+        "else:\n"
+        "    print('summary.json not found -- the run cell above failed before writing it;'\n"
+        "          ' see its returncode/stderr output for the actual error.')\n"
     )
     cells = [
         _markdown("# JED real-model repro (Phase 2)\n"

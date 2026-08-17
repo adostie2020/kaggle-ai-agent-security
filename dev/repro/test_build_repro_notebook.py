@@ -51,6 +51,23 @@ def main() -> int:
     assert "returncode" in all_src, "run cell does not surface subprocess returncode"
     assert "stderr" in all_src, "run cell does not surface subprocess stderr"
 
+    # R14: the run cell must pass env= to subprocess.run, carrying the kernel's
+    # sys.path into the child as PYTHONPATH -- otherwise the subprocess cannot
+    # `import aicomp_sdk` (it does not inherit the PREAMBLE cell's in-memory
+    # sys.path mutation) and dies before weights or GPU ever matter. Scope this
+    # to the run cell itself (identified as the one whose source contains
+    # "subprocess.run"), not all_src, so a dropped env= wouldn't be masked by
+    # some unrelated cell mentioning "env=" in passing.
+    run_srcs = [
+        "".join(c["source"]) for c in cells
+        if c["cell_type"] == "code" and "subprocess.run" in "".join(c["source"])
+    ]
+    assert len(run_srcs) == 1, f"expected exactly 1 run cell, found {len(run_srcs)}"
+    run_src = run_srcs[0]
+    assert "env=env" in run_src.replace(" ", ""), \
+        "run cell's subprocess.run call does not pass env= (child can't import aicomp_sdk)"
+    assert "PYTHONPATH" in run_src, "run cell does not derive PYTHONPATH from sys.path"
+
     print("test_build_repro_notebook: PASS")
     return 0
 

@@ -74,6 +74,12 @@ def run_repro(
             guardrail_factory=guardrail_factory,
             max_tool_hops=max_tool_hops,
         )
+        # trace_chain labels the report `agent_factory.__name__`, which is always the
+        # useless literal "<lambda>" on the production path -- build_agent_factory's
+        # every branch returns a bare lambda. Relabel with the model row id on this
+        # local report instance (TraceReport is a plain, non-frozen dataclass); do
+        # NOT rename the factory/class itself, which would mutate SDK state process-wide.
+        report.agent = model
         report_path = out / f"candidate_{i}.json"
         report_path.write_text(report.to_json(), encoding="utf-8")
 

@@ -39,11 +39,13 @@ def main() -> int:
             "the selection is probably not being coerced to AgentSelection"
         )
 
-    # 4: weight-path wiring sets the SDK env var
-    models.wire_weight_paths({"gemma": "/kaggle/input/gemma/model.gguf",
-                              "gpt_oss": "/kaggle/input/gptoss/model.gguf"})
-    assert os.environ["GEMMA4_MODEL_PATH"] == "/kaggle/input/gemma/model.gguf"
-    assert os.environ["GPT_OSS_MODEL_PATH"] == "/kaggle/input/gptoss/model.gguf"
+    # 4: weight-path wiring sets the SDK env var (paths are local HF Transformers
+    # snapshot directories, not .gguf files -- this test only checks env-var
+    # passthrough, so the exact path strings are documentation-only)
+    models.wire_weight_paths({"gemma": "/kaggle/input/gemma/hf-snapshot",
+                              "gpt_oss": "/kaggle/input/gptoss/hf-snapshot"})
+    assert os.environ["GEMMA4_MODEL_PATH"] == "/kaggle/input/gemma/hf-snapshot"
+    assert os.environ["GPT_OSS_MODEL_PATH"] == "/kaggle/input/gptoss/hf-snapshot"
     os.environ.pop("GEMMA4_MODEL_PATH", None)
     os.environ.pop("GPT_OSS_MODEL_PATH", None)
 
