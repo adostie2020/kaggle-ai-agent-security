@@ -23,6 +23,24 @@ def main() -> int:
     # every code cell must be syntactically importable text (no accidental f-string breakage)
     for c in cells:
         assert c["cell_type"] in ("code", "markdown")
+
+    # R3: the embed cell must carry all eight embedded destination filenames --
+    # the four dev/repro/ sources plus the Phase-1 deps (oracle/trace/agents/attack)
+    # that run_repro.py -> runner.py -> trace.py transitively import. Check each
+    # individually so a regression names the specific file that went missing.
+    embedded_names = [
+        "debug_sink.py", "models.py", "runner.py", "run_repro.py",
+        "oracle.py", "trace.py", "agents.py", "attack.py",
+    ]
+    for name in embedded_names:
+        needle = f"/kaggle/working/repro_pkg/{name}"
+        assert needle in all_src, f"embed cell missing dependency file: {name}"
+
+    # R4: the run cell must surface the subprocess's failure (returncode + stderr),
+    # not just print stdout.
+    assert "returncode" in all_src, "run cell does not surface subprocess returncode"
+    assert "stderr" in all_src, "run cell does not surface subprocess stderr"
+
     print("test_build_repro_notebook: PASS")
     return 0
 

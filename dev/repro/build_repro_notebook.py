@@ -80,7 +80,6 @@ def build(model: str = "gemma", n_candidates: int = 8,
           weights: dict[str, str] | None = None) -> dict:
     weights = weights or {}
     weight_args = " ".join(f"{row}={path}" for row, path in weights.items())
-    weight_flag = f" --weights {weight_args}" if weight_args else ""
     run_cell = (
         "import subprocess, sys\n"
         "cmd = [sys.executable, '/kaggle/working/repro_pkg/run_repro.py',\n"
