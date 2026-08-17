@@ -53,11 +53,7 @@ def main() -> int:
     # Belt-and-suspenders: also patch construction we don't control, if a sink dir
     # is set (harmless for the deterministic self-check).
     if args.sink_dir:
-        import os
-
-        os.environ.setdefault("AICOMP_DEBUG_SINK_PATH",
-                              str(Path(args.sink_dir) / "default_sink.jsonl"))
-        install_default_sink()
+        install_default_sink(path=str(Path(args.sink_dir) / "default_sink.jsonl"))
 
     if model != "deterministic" and not args.no_validate:
         models.validate_selection(model)  # raises fast if weights/config missing
