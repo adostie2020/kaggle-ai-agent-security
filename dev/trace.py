@@ -159,3 +159,38 @@ def trace_chain(
     return TraceReport(
         agent=agent_factory.__name__, turns=turns, final_trace=env.export_trace_dict()
     )
+
+
+def _candidate_chain(n: int) -> list[str]:
+    """Build attack.py's returned corpus and return the Nth candidate's messages."""
+    import attack
+
+    cands = attack.AttackAlgorithm(config={"n_candidates": n + 1}).run(env=None, config=None)
+    return list(cands[n].user_messages)
+
+
+def main() -> int:
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Turn-by-turn tracer over the real SDK env.")
+    ap.add_argument("messages", nargs="*", help="user message(s), one per turn")
+    ap.add_argument("--agent", choices=list(AGENTS), default="deterministic")
+    ap.add_argument("--candidate", type=int, default=None,
+                    help="trace attack.py's Nth returned candidate instead of messages")
+    ap.add_argument("--max-tool-hops", type=int, default=oracle.MAX_TOOL_HOPS)
+    ap.add_argument("--json", action="store_true", help="emit structured JSON")
+    args = ap.parse_args()
+
+    messages = _candidate_chain(args.candidate) if args.candidate is not None else args.messages
+    if not messages:
+        ap.error("provide message(s) or --candidate N")
+
+    report = trace_chain(
+        messages, agent_factory=AGENTS[args.agent], max_tool_hops=args.max_tool_hops
+    )
+    print(report.to_json() if args.json else report.render())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
