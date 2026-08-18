@@ -39,8 +39,11 @@ def main() -> int:
     ap.add_argument("--sink-dir", default=None,
                     help="dir for raw per-candidate model debug JSONL (optional)")
     ap.add_argument("--weights", nargs="*", default=None,
-                    help="row=path weight paths, e.g. gemma=/kaggle/input/g/hf-snapshot "
-                         "(a local HF Transformers model directory, not a .gguf file)")
+                    help="row=path weight paths, e.g. gemma=/kaggle/input/g/hf-snapshot. "
+                         "These feed build_agent_factory's HF backends, so each is a model "
+                         "DIRECTORY. Note the deployed evaluator instead runs llama.cpp GGUF "
+                         "model servers keyed on GPT_OSS_MODEL_PATH / GEMMA_MODEL_PATH file "
+                         "paths -- see README 'TWO BACKEND LAYERS'.")
     ap.add_argument("--self-check", action="store_true",
                     help="force --model deterministic (weights-free smoke run)")
     ap.add_argument("--no-validate", action="store_true",
