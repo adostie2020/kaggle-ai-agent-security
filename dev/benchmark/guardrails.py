@@ -33,6 +33,10 @@ except ModuleNotFoundError as exc:  # pragma: no cover - env guard
     ) from exc
 
 # ---- rule-data constants (tunable by tests, not inline in logic) ------------
+# NOTE: _t_secret_marker's full-arg scan matches these as bare substrings, so it is
+# intentionally aggressive/FP-prone by design (a strict-hypothesis over-blocker) — e.g.
+# "key" also matches "monkey", "turkey", or any URL containing "key". Do not "fix" this
+# to word-boundary matching without re-checking the benchmark's block-rate expectations.
 ULTRA_DANGEROUS: frozenset[str] = frozenset(
     {"secret", "password", "token", "key", "credential", "private", "confidential", "api_key"}
 )

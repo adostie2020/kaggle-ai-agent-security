@@ -64,6 +64,11 @@ SECRET_MARKER block). Rules and probabilities live in `guardrails.py::RULES`.
   measures guardrail behavior *given compliance*, not whether the real model complies.
 - **Injection false positives.** The `injection_input` regex list is heuristic and FP-prone;
   it is tunable data in `guardrails.py::INJECTION_PATTERNS` and its block is probabilistic.
+- **Ultra-dangerous substring breadth.** `secret_marker`'s full-arg scan matches
+  `ULTRA_DANGEROUS` terms (e.g. `"key"`) as bare substrings, so it also matches
+  `"monkey"`, `"turkey"`, or any URL containing `"key"`. This over-breadth is
+  intentional — a strict-hypothesis over-blocker whose block is probabilistic — and it
+  does not fire on the real `http://h{i}.co` corpus.
 
 ## Design decisions vs the spec
 

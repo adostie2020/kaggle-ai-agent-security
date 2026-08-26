@@ -132,7 +132,7 @@ def run_benchmark(
         notes.append("corpus fires nothing even under the permissive baseline")
     else:
         survival = mean_member_norm / baseline_norm
-        survival_min = min(member_norms) / baseline_norm
+        survival_min = (min(member_norms) / baseline_norm) if member_norms else None
         survival_p10 = _percentile(member_norms, 10) / baseline_norm
 
     per_rule_block_rate = {
@@ -175,7 +175,7 @@ def render_report(report: dict[str, Any]) -> str:
     surv = report["survival"]
     surv_s = "null" if surv is None else f"{surv:.4f}"
     lines.append(f"survival (mean/baseline): {surv_s}")
-    if surv is not None:
+    if report["survival_min"] is not None and report["survival_p10"] is not None:
         lines.append(f"  survival_min={report['survival_min']:.4f} "
                      f"survival_p10={report['survival_p10']:.4f}")
     lines.append(f"surviving_diversity: {report['surviving_diversity']} "

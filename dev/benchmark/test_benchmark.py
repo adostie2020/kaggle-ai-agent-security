@@ -66,6 +66,13 @@ def test_baseline_crosscheck():
                               agent_factory=B.MockCompliantAgent)
     _check("crosscheck/baseline_norm", abs(rep["baseline_norm"] - ref["normalized"]) < 1e-9,
            f"{rep['baseline_norm']} vs {ref['normalized']}")
+    # Load-bearing: the MEMBER scoring path (_run_corpus) must agree with score_corpus
+    # independently, on the same guardrail (OptimalGuardrail) — the two scoring paths
+    # are separate code and must not silently diverge.
+    member_res = B._run_corpus(corpus, OptimalGuardrail, B.MockCompliantAgent, 4)
+    _check("crosscheck/_run_corpus_vs_score_corpus",
+           abs(member_res["norm"] - ref["normalized"]) < 1e-9,
+           f"{member_res['norm']} vs {ref['normalized']}")
 
 
 def test_baseline_zero_flags_null_survival():
