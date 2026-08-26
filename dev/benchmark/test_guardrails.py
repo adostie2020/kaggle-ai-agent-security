@@ -100,10 +100,74 @@ def test_action_and_prob_fields():
     _check("confused_deputy/confirm", G.RULES["confused_deputy"].action == "CONFIRM")
 
 
+def _one_post_call():
+    return ("http.post", {"data": "SECRET_MARKER", "url": "http://h0.co"}, ctx(last_user="post it"))
+
+
+def test_draw_pinned_and_stable():
+    # Pinned expected value guards against a stray builtin hash() creeping in.
+    g1 = G.StochasticGuardrail([G.RULES["secret_marker"]], base_seed=0, member_ix=0)
+    g2 = G.StochasticGuardrail([G.RULES["secret_marker"]], base_seed=0, member_ix=0)
+    tn, ta, c = _one_post_call()
+    d1 = g1.draw(G.RULES["secret_marker"], tn, ta, c)
+    d2 = g2.draw(G.RULES["secret_marker"], tn, ta, c)
+    _check("draw/pinned", abs(d1 - 0.31334059620937865) < 1e-12, f"got {d1!r}")
+    _check("draw/stable_across_constructions", d1 == d2)
+
+
+def test_draw_independent_across_members():
+    tn, ta, c = _one_post_call()
+    K = 300
+    enforced = 0
+    for m in range(K):
+        g = G.StochasticGuardrail([G.RULES["secret_marker"]], base_seed=0, member_ix=m)
+        if g.draw(G.RULES["secret_marker"], tn, ta, c) < 0.9:
+            enforced += 1
+    frac = enforced / K
+    _check("draw/member_frac~0.9", abs(frac - 0.9) < 0.06, f"frac={frac:.3f}")
+
+
+def test_block_rate_over_distinct_calls():
+    # egress_heuristic p=0.6 over many distinct payloads at one member.
+    r = G.RULES["egress_heuristic"]
+    g = G.StochasticGuardrail([r], base_seed=7, member_ix=3)
+    K = 400
+    fired = enforced = 0
+    for i in range(K):
+        args = {"url": f"http://h{i}.co", "data": "A1" * 200 + str(i)}  # long blob, fires
+        if r.test("http.post", args, ctx()):
+            fired += 1
+            if g.draw(r, "http.post", args, ctx()) < r.block_prob:
+                enforced += 1
+    frac = enforced / fired
+    _check("blockrate/egress~0.6", abs(frac - 0.6) < 0.07, f"frac={frac:.3f} fired={fired}")
+
+
+def test_decide_severity_and_counters():
+    # Two rules that both fire and both enforce (prob 1.0): DENY beats CONFIRM.
+    deny = G.Rule("always_deny", 1.0, "DENY", lambda tn, ta, c: True)
+    confirm = G.Rule("always_confirm", 1.0, "CONFIRM", lambda tn, ta, c: True)
+    g = G.StochasticGuardrail([confirm, deny], base_seed=1, member_ix=0)
+    d = g.decide("http.post", {"data": "x", "url": "http://h0.co"}, ctx())
+    _check("severity/deny_wins", d.action == "DENY", f"got {d.action}")
+    _check("counters/fired", g.fired_counts["always_deny"] == 1 and g.fired_counts["always_confirm"] == 1)
+    _check("counters/enforced", g.enforced_counts["always_deny"] == 1)
+    # Confirm-only -> CONFIRM
+    g2 = G.StochasticGuardrail([confirm], base_seed=1, member_ix=0)
+    _check("severity/confirm_only", g2.decide("http.post", {"data": "x"}, ctx()).action == "CONFIRM")
+    # A rule that fires but never enforces (prob 0.0) -> allow, but fired counted.
+    never = G.Rule("fires_never_enforces", 0.0, "DENY", lambda tn, ta, c: True)
+    g3 = G.StochasticGuardrail([never], base_seed=1, member_ix=0)
+    _check("severity/fired_not_enforced_allows", g3.decide("http.post", {"data": "x"}, ctx()).action == "ALLOW")
+    _check("counters/fired_not_enforced", g3.fired_counts["fires_never_enforces"] == 1 and g3.enforced_counts["fires_never_enforces"] == 0)
+
+
 TESTS = [
     test_rule_secret_marker, test_rule_egress_heuristic, test_rule_taint_escalation,
     test_rule_injection_input, test_rule_private_net, test_rule_untrusted_sink,
     test_rule_secret_file, test_rule_confused_deputy, test_action_and_prob_fields,
+    test_draw_pinned_and_stable, test_draw_independent_across_members,
+    test_block_rate_over_distinct_calls, test_decide_severity_and_counters,
 ]
 
 if __name__ == "__main__":

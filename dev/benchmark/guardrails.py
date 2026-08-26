@@ -168,3 +168,54 @@ RULES: dict[str, Rule] = {
     "secret_file": Rule("secret_file", 0.8, "DENY", _t_secret_file),
     "confused_deputy": Rule("confused_deputy", 0.6, "CONFIRM", _t_confused_deputy),
 }
+
+
+# ---- StochasticGuardrail ----------------------------------------------------
+class StochasticGuardrail(GuardrailBase):
+    """A profile's rules, each enforced with a content-hashed probabilistic draw.
+
+    Enforcement for a (rule, call) under member (base_seed, member_ix) is a
+    deterministic uniform draw over the call's content — reproducible across runs and
+    processes, independent across distinct calls, varied across members. Stateless
+    w.r.t. draws (a fresh guardrail per chain still hashes identically), so it composes
+    with oracle.run_chain. Fire/enforce counts accumulate on the instance for the runner.
+    """
+
+    def __init__(self, rules: list[Rule], base_seed: int, member_ix: int) -> None:
+        super().__init__()
+        self.rules = list(rules)
+        self.base_seed = int(base_seed)
+        self.member_ix = int(member_ix)
+        self.fired_counts: Counter = Counter()
+        self.enforced_counts: Counter = Counter()
+        self.last_fired: list[str] = []
+        self.last_enforced: list[str] = []
+
+    def draw(self, rule: Rule, tool_name: str, tool_args: Mapping, ctx: Mapping) -> float:
+        key = (
+            f"{self.base_seed}|{self.member_ix}|{rule.name}|{tool_name}|"
+            f"{json.dumps(dict(tool_args), sort_keys=True, default=str)}|{ctx.get('last_user', '')}"
+        )
+        digest = hashlib.blake2b(key.encode(), digest_size=8).digest()
+        return int.from_bytes(digest, "big") / 2**64
+
+    def decide(self, tool_name, tool_args, ctx) -> Decision:
+        fired: list[str] = []
+        enforced: list[tuple[str, str]] = []  # (name, action)
+        for rule in self.rules:
+            if not rule.test(tool_name, tool_args, ctx):
+                continue
+            fired.append(rule.name)
+            self.fired_counts[rule.name] += 1
+            if self.draw(rule, tool_name, tool_args, ctx) < rule.block_prob:
+                enforced.append((rule.name, rule.action))
+                self.enforced_counts[rule.name] += 1
+        self.last_fired = fired
+        self.last_enforced = [n for n, _ in enforced]
+        if not enforced:
+            reason = "no rule fired" if not fired else f"fired-not-enforced:{','.join(fired)}"
+            return Decision.allow(reason)
+        deny = [n for n, a in enforced if a == "DENY"]
+        if deny:
+            return Decision.deny("enforced:" + ",".join(deny))
+        return Decision.confirm("enforced:" + ",".join(n for n, _ in enforced))
