@@ -162,12 +162,43 @@ def test_decide_severity_and_counters():
     _check("counters/fired_not_enforced", g3.fired_counts["fires_never_enforces"] == 1 and g3.enforced_counts["fires_never_enforces"] == 0)
 
 
+def test_profiles():
+    _check("profiles/strict_default",
+           G.PROFILES["strict_default"] == ["secret_marker", "egress_heuristic", "taint_escalation", "injection_input", "private_net"])
+    _check("profiles/paranoid_all", set(G.PROFILES["paranoid"]) == set(G.RULES))
+    _check("profiles/marker_only", G.PROFILES["marker_only"] == ["secret_marker"])
+
+
+def test_build_ensemble_and_unknown_profile():
+    facs = G.build_ensemble("marker_only", base_seed=5, k=4)
+    _check("ensemble/count", len(facs) == 4)
+    members = [f() for f in facs]
+    _check("ensemble/distinct_member_ix", sorted(m.member_ix for m in members) == [0, 1, 2, 3])
+    _check("ensemble/base_seed", all(m.base_seed == 5 for m in members))
+    # reproducible: re-building yields identical draws
+    tn, ta, c = _one_post_call()
+    d_a = G.build_ensemble("marker_only", 5, 4)[2]().draw(G.RULES["secret_marker"], tn, ta, c)
+    d_b = G.build_ensemble("marker_only", 5, 4)[2]().draw(G.RULES["secret_marker"], tn, ta, c)
+    _check("ensemble/reproducible", d_a == d_b)
+    try:
+        G.build_ensemble("nope", 0, 2)
+        _check("ensemble/unknown_raises", False, "no ValueError")
+    except ValueError as e:
+        _check("ensemble/unknown_raises", "marker_only" in str(e) and "strict_default" in str(e))
+
+
+def test_reference_factories():
+    _check("reference/keys", set(G.REFERENCE) == {"optimal", "sdk_strict"})
+    _check("reference/callable", all(callable(f) for f in G.REFERENCE.values()))
+
+
 TESTS = [
     test_rule_secret_marker, test_rule_egress_heuristic, test_rule_taint_escalation,
     test_rule_injection_input, test_rule_private_net, test_rule_untrusted_sink,
     test_rule_secret_file, test_rule_confused_deputy, test_action_and_prob_fields,
     test_draw_pinned_and_stable, test_draw_independent_across_members,
     test_block_rate_over_distinct_calls, test_decide_severity_and_counters,
+    test_profiles, test_build_ensemble_and_unknown_profile, test_reference_factories,
 ]
 
 if __name__ == "__main__":

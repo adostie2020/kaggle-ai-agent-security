@@ -24,6 +24,8 @@ try:
     )
     from aicomp_sdk.core.tools.http import PRIVATE_NET_RE
     from aicomp_sdk.guardrails.base import Decision, GuardrailBase
+    from aicomp_sdk.guardrails.optimal import Guardrail as _OptimalGuardrail
+    from aicomp_sdk.attacks.baselines.guardrail_rules import Guardrail as _SdkStrictGuardrail
 except ModuleNotFoundError as exc:  # pragma: no cover - env guard
     raise ModuleNotFoundError(
         "aicomp_sdk not found — run `python dev/bootstrap_sdk.py` to restore the "
@@ -219,3 +221,35 @@ class StochasticGuardrail(GuardrailBase):
         if deny:
             return Decision.deny("enforced:" + ",".join(deny))
         return Decision.confirm("enforced:" + ",".join(n for n, _ in enforced))
+
+
+# ---- profiles + ensemble ----------------------------------------------------
+PROFILES: dict[str, list[str]] = {
+    "strict_default": ["secret_marker", "egress_heuristic", "taint_escalation",
+                       "injection_input", "private_net"],
+    "paranoid": list(RULES.keys()),
+    "marker_only": ["secret_marker"],
+}
+
+
+def _profile_rules(profile: str) -> list[Rule]:
+    if profile not in PROFILES:
+        raise ValueError(f"unknown profile {profile!r}; valid: {sorted(PROFILES)}")
+    return [RULES[name] for name in PROFILES[profile]]
+
+
+def build_ensemble(profile: str, base_seed: int, k: int) -> list[Callable[[], "StochasticGuardrail"]]:
+    """k guardrail factories, member_ix 0..k-1, each closing over (base_seed, member_ix)."""
+    rules = _profile_rules(profile)  # raises on unknown profile
+
+    def _factory(member_ix: int) -> Callable[[], StochasticGuardrail]:
+        return lambda: StochasticGuardrail(rules, base_seed, member_ix)
+
+    return [_factory(i) for i in range(int(k))]
+
+
+# Fixed references for comparison — NOT part of the stochastic sweep.
+REFERENCE: dict[str, Callable[[], GuardrailBase]] = {
+    "optimal": _OptimalGuardrail,
+    "sdk_strict": _SdkStrictGuardrail,
+}
