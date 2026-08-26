@@ -15,6 +15,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Callable, Sequence
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # repo root (attack)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # dev/
 sys.path.insert(0, str(Path(__file__).resolve().parent))      # dev/benchmark/
 
