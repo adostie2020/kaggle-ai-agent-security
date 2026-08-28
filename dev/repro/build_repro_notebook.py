@@ -48,6 +48,19 @@ PREAMBLE = (
 )
 
 
+GGUF_SETUP = (
+    "import os, importlib.util, subprocess, sys\n"
+    "os.environ.setdefault('HF_HOME', '/kaggle/temp/hf')  # NOT /kaggle/working (>11GB, committed)\n"
+    "if importlib.util.find_spec('llama_cpp') is None:\n"
+    "    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q',\n"
+    "        'llama-cpp-python', '--extra-index-url',\n"
+    "        'https://abetlen.github.io/llama-cpp-python/whl/cu124'])\n"
+    "import llama_cpp\n"
+    "print('llama_cpp', llama_cpp.__version__, 'gpu_offload',\n"
+    "      llama_cpp.llama_supports_gpu_offload())\n"
+)
+
+
 def _code(src: str) -> dict:
     return {"cell_type": "code", "metadata": {}, "outputs": [],
             "execution_count": None, "source": src}
@@ -78,13 +91,14 @@ def _embed_sources() -> str:
 
 
 def build(model: str = "gemma", n_candidates: int = 8,
-          weights: dict[str, str] | None = None) -> dict:
+          weights: dict[str, str] | None = None, backend: str = "gguf") -> dict:
     weights = weights or {}
     weight_args = " ".join(f"{row}={path}" for row, path in weights.items())
     run_cell = (
         "import os, subprocess, sys\n"
         "cmd = [sys.executable, '/kaggle/working/repro_pkg/run_repro.py',\n"
         f"       '--model', '{model}', '--candidates', '{n_candidates}',\n"
+        f"       '--backend', '{backend}',\n"
         "       '--out', '/kaggle/working/repro',\n"
         "       '--sink-dir', '/kaggle/working/repro/debug']\n"
         f"extra = {weight_args!r}\n"
@@ -119,12 +133,17 @@ def build(model: str = "gemma", n_candidates: int = 8,
         "    print('summary.json not found -- the run cell above failed before writing it;'\n"
         "          ' see its returncode/stderr output for the actual error.')\n"
     )
+    needs_gguf = backend == "gguf" and model in ("gpt_oss", "gemma")
     cells = [
         _markdown("# JED real-model repro (Phase 2)\n"
                   "Runs the real agent under the SDK env/guardrail/scoring and dumps\n"
                   "per-candidate observability JSON to `/kaggle/working/repro`.\n"
                   "Not a submission — writes no `submission.csv`."),
         _code(PREAMBLE),
+    ]
+    if needs_gguf:
+        cells.append(_code(GGUF_SETUP))
+    cells += [
         _code("import importlib.util as u\n"
               "assert u.find_spec('aicomp_sdk'), 'aicomp_sdk not importable in kernel'\n"
               "print('aicomp_sdk OK')\n"),

@@ -68,6 +68,30 @@ def main() -> int:
         "run cell's subprocess.run call does not pass env= (child can't import aicomp_sdk)"
     assert "PYTHONPATH" in run_src, "run cell does not derive PYTHONPATH from sys.path"
 
+    # GGUF run: setup cell installs the cu124 wheel + sets HF_HOME; run cell carries --backend
+    g = b.build(model="gpt_oss", n_candidates=2, backend="gguf")
+    gsrc = "\n".join("".join(c["source"]) for c in g["cells"])
+    assert "--backend" in gsrc and "gguf" in gsrc, "backend not wired into gguf run cell"
+    assert "llama-cpp-python" in gsrc, "gguf setup cell missing llama.cpp install"
+    assert "cu124" in gsrc, "gguf setup cell missing cu124 extra-index-url"
+    assert "HF_HOME" in gsrc and "/kaggle/temp" in gsrc, "gguf setup cell missing HF_HOME"
+    # setup cell must not masquerade as the embed or run cell
+    assert "subprocess.run" not in "".join(
+        c2 for c in g["cells"] if "llama-cpp-python" in "".join(c["source"])
+        for c2 in c["source"]
+    ), "setup cell must not contain subprocess.run"
+
+    # hf run: no llama install cell, still carries --backend hf
+    h = b.build(model="gpt_oss", n_candidates=2, backend="hf")
+    hsrc = "\n".join("".join(c["source"]) for c in h["cells"])
+    assert "--backend" in hsrc and "hf" in hsrc
+    assert "llama-cpp-python" not in hsrc, "hf run should not install llama.cpp"
+
+    # deterministic gguf: no llama install (deterministic needs no GGUF backend)
+    d = b.build(model="deterministic", n_candidates=2, backend="gguf")
+    dsrc = "\n".join("".join(c["source"]) for c in d["cells"])
+    assert "llama-cpp-python" not in dsrc, "deterministic must not install llama.cpp"
+
     print("test_build_repro_notebook: PASS")
     return 0
 
