@@ -12,6 +12,8 @@ import models  # noqa: E402
 
 
 def main() -> int:
+    tmp = Path(__file__).resolve().parent  # writable scratch dir for sink files
+
     # 1: row-id -> selection mapping (gemma defaults to gemma_4 per spec model id)
     assert models.selection_for("deterministic") == "deterministic"
     assert models.selection_for("gpt_oss") == "gpt_oss"
@@ -78,6 +80,95 @@ def main() -> int:
         raise AssertionError("expected RuntimeError building hf gpt_oss without weights")
     except RuntimeError:
         pass
+
+    # --- GGUF path via a fake server_factory (no mount, no weights, no llama_cpp) ---
+    import debug_sink
+
+    class _FakeSpec:
+        def __init__(self):
+            self.create_calls = 0
+            self.model_path_env_var = "FAKE_GGUF_PATH"
+
+        def create_agent(self, backend):
+            self.create_calls += 1
+            return object()  # a fresh, distinct "agent" each call
+
+    class _FakeServer:
+        def __init__(self, spec):
+            self.spec = spec
+            self.loads = 0
+            self.unloads = 0
+            self._backend = None
+
+        def load_model(self):
+            self.loads += 1
+            self._backend = object()
+            return self._backend
+
+        def unload(self):
+            self.unloads += 1
+
+    created: list = []
+
+    def _fake_factory(row_id):
+        spec, server = _FakeSpec(), None
+        server = _FakeServer(spec)
+        created.append((spec, server))
+        return spec, server
+
+    # 9: backend loaded exactly once across N agent_factory calls; distinct agents
+    sess = models.ModelSession("gpt_oss", "gguf", server_factory=_fake_factory).open()
+    agents = [sess.agent_factory(None)() for _ in range(3)]
+    spec, server = created[-1]
+    assert server.loads == 1, server.loads
+    assert spec.create_calls == 3, spec.create_calls
+    assert len({id(a) for a in agents}) == 3, "agents not distinct"
+
+    # 10: close() unloads and restores patched __init__s
+    real_sink = debug_sink.make_jsonl_sink(tmp / "_repro_session_sink.jsonl")
+    sess.agent_factory(real_sink)()          # triggers install_sink -> patches classes
+    assert debug_sink._ORIGINALS, "install_sink did not patch"
+    sess.close()
+    assert not debug_sink._ORIGINALS, "close() did not restore patched __init__s"
+    assert server.unloads == 1, server.unloads
+    (tmp / "_repro_session_sink.jsonl").unlink(missing_ok=True)
+
+    # 11: the sink passed to agent_factory is the one forwarded to install_sink
+    seen: list = []
+    orig_install = models.install_sink
+    models.install_sink = lambda s: seen.append(s)
+    try:
+        sess2 = models.ModelSession("gemma", "gguf", server_factory=_fake_factory).open()
+        sess2.agent_factory(real_sink)()
+        assert seen == [real_sink], seen
+        sess2.close()
+    finally:
+        models.install_sink = orig_install
+
+    # 12: weight_path override writes the spec's model_path_env_var before load
+    os.environ.pop("FAKE_GGUF_PATH", None)
+    sess3 = models.ModelSession(
+        "gpt_oss", "gguf", server_factory=_fake_factory, weight_path="/x/model.gguf"
+    ).open()
+    assert os.environ["FAKE_GGUF_PATH"] == "/x/model.gguf"
+    sess3.close()
+    os.environ.pop("FAKE_GGUF_PATH", None)
+
+    # 13: _backend None after load_model -> actionable RuntimeError
+    class _NullBackendServer(_FakeServer):
+        def load_model(self):
+            self.loads += 1
+            self._backend = None
+            return None
+
+    def _null_factory(row_id):
+        return _FakeSpec(), _NullBackendServer(_FakeSpec())
+
+    try:
+        models.ModelSession("gpt_oss", "gguf", server_factory=_null_factory).open()
+        raise AssertionError("expected RuntimeError on None _backend")
+    except RuntimeError as e:
+        assert "_backend is None" in str(e), e
 
     print("test_models: PASS")
     return 0
