@@ -34,6 +34,9 @@ def _parse_weights(pairs: list[str]) -> dict[str, str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Real-model repro observability runner.")
     ap.add_argument("--model", choices=list(models.REPRO_MODELS), default="gemma")
+    ap.add_argument("--backend", choices=["gguf", "hf"], default="gguf",
+                    help="gguf = evaluator's llama.cpp GGUF servers (scored parity); "
+                         "hf = build_agent_factory HF Transformers backends")
     ap.add_argument("--candidates", type=int, default=8)
     ap.add_argument("--out", default="repro_out")
     ap.add_argument("--sink-dir", default=None,
@@ -66,6 +69,7 @@ def main() -> int:
         model=model,
         n_candidates=args.candidates,
         out_dir=args.out,
+        backend=args.backend,
         sink_dir=args.sink_dir,
     )
     print(f"repro done: model={result.model} candidates={result.n_candidates} "

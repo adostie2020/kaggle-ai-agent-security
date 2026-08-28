@@ -97,6 +97,20 @@ def main() -> int:
     if decoy_dir.exists():
         shutil.rmtree(decoy_dir, ignore_errors=True)
 
+    # Test 4: --backend hf self-check runs (backend threads through the CLI)
+    out = HERE / "_run_repro_backend_out"
+    if out.exists():
+        shutil.rmtree(out)
+    cmd = [
+        PYEXE, str(HERE / "run_repro.py"),
+        "--self-check", "--backend", "hf", "--candidates", "2", "--out", str(out),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["model"] == "deterministic"
+    shutil.rmtree(out, ignore_errors=True)
+
     print("test_run_repro: PASS")
     return 0
 
