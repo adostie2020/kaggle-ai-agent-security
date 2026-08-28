@@ -50,6 +50,9 @@ def _parse_weights(pairs: list[str] | None) -> dict[str, str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", default="deterministic", choices=["deterministic", "gpt_oss", "gemma"])
+    ap.add_argument("--backend", choices=["gguf", "hf"], default="gguf",
+                    help="gguf = evaluator llama.cpp GGUF servers (needs internet for the "
+                         "HF download); hf = build_agent_factory HF backends")
     ap.add_argument("--candidates", type=int, default=8)
     ap.add_argument("--weights", nargs="*", default=None, help="row=path")
     ap.add_argument("--gpu", action="store_true", help="request a T4 (needed for real models)")
@@ -58,15 +61,20 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="build and validate, do not push")
     args = ap.parse_args()
 
+    need_net = args.backend == "gguf" and args.model in ("gpt_oss", "gemma")
+    if args.backend == "gguf" and args.model in ("gpt_oss", "gemma") and not args.gpu:
+        print("WARNING: --backend gguf on a real model row without --gpu; the T4 is "
+              "required for llama.cpp offload. Pass --gpu.")
+
     nb = brn.build(model=args.model, n_candidates=args.candidates,
-                   weights=_parse_weights(args.weights))
+                   weights=_parse_weights(args.weights), backend=args.backend)
     # Kaggle-side execution settings live in the notebook metadata as well as the
     # request body; the body is authoritative for machineShape (see push_kernel.py).
     nb["metadata"]["kaggle"] = {
         "accelerator": "nvidiaTeslaT4" if args.gpu else "none",
         "dataSources": [{"sourceId": 134815, "sourceType": "competition"}],
         "isGpuEnabled": bool(args.gpu),
-        "isInternetEnabled": False,
+        "isInternetEnabled": need_net,
         "language": "python",
         "sourceType": "notebook",
     }
@@ -82,7 +90,7 @@ def main() -> int:
         "isPrivate": True,
         "enableGpu": bool(args.gpu),
         "enableTpu": False,
-        "enableInternet": False,
+        "enableInternet": need_net,
         "datasetDataSources": [],
         "competitionDataSources": [COMPETITION],
         "kernelDataSources": [],
