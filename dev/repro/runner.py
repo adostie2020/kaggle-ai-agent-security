@@ -44,7 +44,8 @@ def run_repro(
     model: str,
     n_candidates: int,
     out_dir: str | Path,
-    resolve: Callable[[str, Any], Callable[[], Any]] = models.resolve_agent_factory_kw,
+    backend: str = "gguf",
+    resolve: Callable[[str, Any], Callable[[], Any]] | None = None,
     sink_dir: str | Path | None = None,
     guardrail_factory: Callable[[], Any] = oracle.OptimalGuardrail,
     max_tool_hops: int = oracle.MAX_TOOL_HOPS,
@@ -60,44 +61,55 @@ def run_repro(
     total_raw = 0.0
     total_norm = 0.0
 
-    for i, messages in enumerate(chains):
-        debug_path = None
-        debug_sink = None
-        if sink_root is not None:
-            debug_path = sink_root / f"candidate_{i}.debug.jsonl"
-            debug_sink = make_jsonl_sink(debug_path)
+    session = None
+    if resolve is None:
+        session = models.ModelSession(model, backend).open()
+        build_factory = session.agent_factory
+    else:
+        build_factory = lambda ds: resolve(model, ds)  # noqa: E731
 
-        factory = resolve(model, debug_sink)
-        report = tracer.trace_chain(
-            messages,
-            agent_factory=factory,
-            guardrail_factory=guardrail_factory,
-            max_tool_hops=max_tool_hops,
-        )
-        # trace_chain labels the report `agent_factory.__name__`, which is always the
-        # useless literal "<lambda>" on the production path -- build_agent_factory's
-        # every branch returns a bare lambda. Relabel with the model row id on this
-        # local report instance (TraceReport is a plain, non-frozen dataclass); do
-        # NOT rename the factory/class itself, which would mutate SDK state process-wide.
-        report.agent = model
-        report_path = out / f"candidate_{i}.json"
-        report_path.write_text(report.to_json(), encoding="utf-8")
+    try:
+        for i, messages in enumerate(chains):
+            debug_path = None
+            debug_sink = None
+            if sink_root is not None:
+                debug_path = sink_root / f"candidate_{i}.debug.jsonl"
+                debug_sink = make_jsonl_sink(debug_path)
 
-        final = report.turns[-1] if report.turns else None
-        raw = float(final.running_raw) if final else 0.0
-        norm = float(final.running_normalized) if final else 0.0
-        total_raw += raw
-        total_norm += norm
-        per_candidate.append(
-            {
-                "index": i,
-                "messages": messages,
-                "running_raw": raw,
-                "running_normalized": norm,
-                "report_path": str(report_path),
-                "debug_path": str(debug_path) if debug_path else None,
-            }
-        )
+            factory = build_factory(debug_sink)
+            report = tracer.trace_chain(
+                messages,
+                agent_factory=factory,
+                guardrail_factory=guardrail_factory,
+                max_tool_hops=max_tool_hops,
+            )
+            # trace_chain labels the report `agent_factory.__name__`, which is always the
+            # useless literal "<lambda>" on the production path -- build_agent_factory's
+            # every branch returns a bare lambda. Relabel with the model row id on this
+            # local report instance (TraceReport is a plain, non-frozen dataclass); do
+            # NOT rename the factory/class itself, which would mutate SDK state process-wide.
+            report.agent = model
+            report_path = out / f"candidate_{i}.json"
+            report_path.write_text(report.to_json(), encoding="utf-8")
+
+            final = report.turns[-1] if report.turns else None
+            raw = float(final.running_raw) if final else 0.0
+            norm = float(final.running_normalized) if final else 0.0
+            total_raw += raw
+            total_norm += norm
+            per_candidate.append(
+                {
+                    "index": i,
+                    "messages": messages,
+                    "running_raw": raw,
+                    "running_normalized": norm,
+                    "report_path": str(report_path),
+                    "debug_path": str(debug_path) if debug_path else None,
+                }
+            )
+    finally:
+        if session is not None:
+            session.close()
 
     result = ReproResult(
         model=model,

@@ -59,6 +59,19 @@ def main() -> int:
     assert abs(result.total_normalized - oc["normalized"]) < 1e-9, (
         result.total_normalized, oc["normalized"])
 
+    # 4: resolve=None (default) routes deterministic through ModelSession end-to-end
+    out2 = Path(oracle.FIXTURES).parent / "_repro_runner_session_out"
+    if out2.exists():
+        shutil.rmtree(out2)
+    res2 = runner.run_repro(
+        model="deterministic", n_candidates=2, out_dir=out2, backend="hf", resolve=None
+    )
+    assert (out2 / "summary.json").exists()
+    c0 = json.loads((out2 / "candidate_0.json").read_text(encoding="utf-8"))
+    assert c0["agent"] == "deterministic", c0["agent"]
+    assert res2.n_candidates == 2
+    shutil.rmtree(out2, ignore_errors=True)
+
     print("test_runner: PASS  total_raw=%s norm=%.3f" % (
         result.total_raw, result.total_normalized))
     return 0
