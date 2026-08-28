@@ -83,6 +83,19 @@ def main() -> int:
     assert not p4.exists(), "uninstall_default_sink leaked the patch"
     os.environ.pop(DEFAULT_SINK_ENV, None)
 
+    # --- 5: install_sink(sink) injects THIS sink under debug_sink=None ---
+    from debug_sink import install_sink  # local import keeps case self-contained
+    p5 = tmp / "_repro_test_install_sink.jsonl"
+    p5.unlink(missing_ok=True)
+    sink5 = make_jsonl_sink(p5)
+    install_sink(sink5)
+    try:
+        _run_once(build_agent_factory("deterministic", debug_sink=None)())
+        assert p5.exists() and _jsonl_lines(p5), "install_sink(sink) did not inject the sink"
+    finally:
+        uninstall_default_sink()
+    p5.unlink(missing_ok=True)
+
     print("test_debug_sink: PASS")
     return 0
 

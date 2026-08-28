@@ -46,17 +46,11 @@ def make_jsonl_sink(path: str | Path) -> JsonlAgentDebugSink:
     return JsonlAgentDebugSink(Path(path))
 
 
-def install_default_sink(path: str | Path | None = None) -> Path | None:
-    """Patch agent __init__s so debug_sink=None becomes a shared JSONL sink.
+def install_sink(sink) -> None:
+    """Patch agent __init__s so a debug_sink=None construction uses THIS sink object.
 
-    Returns the resolved sink path, or None (no-op) if no path is configured.
-    Idempotent: re-patching reuses the stored originals and a fresh sink.
+    Idempotent: re-patching reuses the stored originals so uninstall fully restores.
     """
-    resolved = resolve_sink_path(str(path) if path is not None else None)
-    if resolved is None:
-        return None
-    sink = make_jsonl_sink(resolved)
-
     for cls in _PATCH_TARGETS:
         original = _ORIGINALS.get(cls, cls.__init__)
         _ORIGINALS.setdefault(cls, original)
@@ -69,6 +63,17 @@ def install_default_sink(path: str | Path | None = None) -> Path | None:
             return __init__
 
         cls.__init__ = make_wrapper(original)  # type: ignore[assignment]
+
+
+def install_default_sink(path: str | Path | None = None) -> Path | None:
+    """Patch agent __init__s so debug_sink=None becomes a shared JSONL sink.
+
+    Returns the resolved sink path, or None (no-op) if no path is configured.
+    """
+    resolved = resolve_sink_path(str(path) if path is not None else None)
+    if resolved is None:
+        return None
+    install_sink(make_jsonl_sink(resolved))
     return resolved
 
 
