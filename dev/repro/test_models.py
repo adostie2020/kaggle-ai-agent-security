@@ -49,6 +49,36 @@ def main() -> int:
     os.environ.pop("GEMMA4_MODEL_PATH", None)
     os.environ.pop("GPT_OSS_MODEL_PATH", None)
 
+    # 5: server-module mapping is plain strings, asserted WITHOUT importing anything
+    assert models.GGUF_SERVER_MODULES["gpt_oss"] == \
+        "kaggle_evaluation.jed_attack_134815.gpt_oss_model_server"
+    assert models.GGUF_SERVER_MODULES["gemma"] == \
+        "kaggle_evaluation.jed_attack_134815.gemma_model_server"
+
+    # 6: unknown row id and unknown backend both raise, listing valid values
+    for bad in [dict(row_id="nope", backend="gguf"), dict(row_id="gpt_oss", backend="vllm")]:
+        try:
+            models.ModelSession(**bad)
+            raise AssertionError(f"expected ValueError for {bad}")
+        except ValueError:
+            pass
+
+    # 7: deterministic routes to build_agent_factory on either backend (no weights)
+    for be in ("gguf", "hf"):
+        sess = models.ModelSession("deterministic", be).open()
+        try:
+            assert sess.agent_factory(None)().__class__.__name__ == "VulnerableDeterministicAgent"
+        finally:
+            sess.close()
+
+    # 8: --backend hf on a real row still hits build_agent_factory (fail-fast, no weights)
+    os.environ.pop("GPT_OSS_MODEL_PATH", None)
+    try:
+        models.ModelSession("gpt_oss", "hf").open().agent_factory(None)
+        raise AssertionError("expected RuntimeError building hf gpt_oss without weights")
+    except RuntimeError:
+        pass
+
     print("test_models: PASS")
     return 0
 
