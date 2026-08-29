@@ -111,6 +111,77 @@ def main() -> int:
     assert summary["model"] == "deterministic"
     shutil.rmtree(out, ignore_errors=True)
 
+    # Test 5: the fail-fast validation gate is backend-aware (in-process, no subprocess,
+    # no weights). --backend gguf must NOT call models.validate_selection (the HF-only
+    # check); --backend hf must call it exactly once. Import run_repro directly so we can
+    # monkeypatch the modules it already imported at module scope.
+    sys.path.insert(0, str(HERE))
+    import run_repro  # noqa: E402 (path set up above, mirrors run_repro.py's own inserts)
+
+    class _StubResult:
+        def __init__(self, model):
+            self.model = model
+            self.n_candidates = 0
+            self.total_raw = 0.0
+            self.total_normalized = 0.0
+            self.out_dir = str(HERE / "_gate_test_out")
+
+    validate_calls = []
+
+    def _spy_validate_selection(row_id):
+        validate_calls.append(row_id)
+
+    run_repro_calls = []
+
+    def _fake_runner_run_repro(**kwargs):
+        run_repro_calls.append(kwargs)
+        return _StubResult(kwargs.get("model"))
+
+    real_validate_selection = run_repro.models.validate_selection
+    real_runner_run_repro = run_repro.runner.run_repro
+    real_argv = sys.argv
+    try:
+        run_repro.models.validate_selection = _spy_validate_selection
+        run_repro.runner.run_repro = _fake_runner_run_repro
+
+        # gguf (default backend): HF gate must be skipped.
+        validate_calls.clear()
+        run_repro_calls.clear()
+        sys.argv = [
+            "run_repro.py", "--backend", "gguf", "--model", "gpt_oss",
+            "--candidates", "0", "--out", str(HERE / "_gate_test_out"),
+        ]
+        rc = run_repro.main()
+        assert rc == 0, f"gguf path: expected rc 0, got {rc}"
+        assert validate_calls == [], (
+            f"gguf backend must NOT call models.validate_selection; got {validate_calls}"
+        )
+        assert len(run_repro_calls) == 1, (
+            f"expected runner.run_repro called once, got {run_repro_calls}"
+        )
+        assert run_repro_calls[0].get("backend") == "gguf"
+
+        # hf (positive control): HF gate must fire exactly once with the model name.
+        validate_calls.clear()
+        run_repro_calls.clear()
+        sys.argv = [
+            "run_repro.py", "--backend", "hf", "--model", "gpt_oss",
+            "--candidates", "0", "--out", str(HERE / "_gate_test_out"),
+        ]
+        rc = run_repro.main()
+        assert rc == 0, f"hf path: expected rc 0, got {rc}"
+        assert validate_calls == ["gpt_oss"], (
+            f"hf backend must call models.validate_selection('gpt_oss') once; got {validate_calls}"
+        )
+        assert len(run_repro_calls) == 1, (
+            f"expected runner.run_repro called once, got {run_repro_calls}"
+        )
+        assert run_repro_calls[0].get("backend") == "hf"
+    finally:
+        sys.argv = real_argv
+        run_repro.models.validate_selection = real_validate_selection
+        run_repro.runner.run_repro = real_runner_run_repro
+
     print("test_run_repro: PASS")
     return 0
 

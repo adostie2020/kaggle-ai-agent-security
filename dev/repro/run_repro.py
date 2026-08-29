@@ -62,8 +62,8 @@ def main() -> int:
     if args.sink_dir:
         install_default_sink(path=str(Path(args.sink_dir) / "default_sink.jsonl"))
 
-    if model != "deterministic" and not args.no_validate:
-        models.validate_selection(model)  # raises fast if weights/config missing
+    if model != "deterministic" and args.backend == "hf" and not args.no_validate:
+        models.validate_selection(model)  # HF backend only; GGUF validates in ModelSession.open()
 
     result = runner.run_repro(
         model=model,
