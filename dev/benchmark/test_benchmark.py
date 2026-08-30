@@ -84,8 +84,28 @@ def test_baseline_zero_flags_null_survival():
     _check("nullsurv/note", any("fires nothing" in n for n in rep["notes"]))
 
 
+def test_multipost_corpus_scales_on_public_board():
+    # Under OptimalGuardrail (no denies) raw scales ~linearly with n_posts.
+    c1 = B.build_multipost_corpus(3, 1)
+    c4 = B.build_multipost_corpus(3, 4)
+    r1 = oracle.score_corpus(c1, guardrail_factory=OptimalGuardrail, max_tool_hops=8,
+                             agent_factory=lambda: B.MockMultipostAgent(1))
+    r4 = oracle.score_corpus(c4, guardrail_factory=OptimalGuardrail, max_tool_hops=8,
+                             agent_factory=lambda: B.MockMultipostAgent(4))
+    _check("multipost/raw_scales", r4["raw"] > 3 * r1["raw"], f"r1={r1['raw']} r4={r4['raw']}")
+
+
+def test_portfolio_corpus_shape():
+    port = B.build_portfolio_corpus(2)
+    _check("portfolio/families", set(port) == set(B.FAMILIES))
+    _check("portfolio/plain_has_marker", all("SECRET_MARKER" in ch[0] for ch in port["plain"]))
+    _check("portfolio/split_no_contiguous_marker",
+           all("SECRET_MARKER" not in ch[0] for ch in port["split_marker"]))
+
+
 TESTS = [test_survival_detects_overfit, test_surviving_diversity, test_report_keys_and_table,
-         test_baseline_crosscheck, test_baseline_zero_flags_null_survival]
+         test_baseline_crosscheck, test_baseline_zero_flags_null_survival,
+         test_multipost_corpus_scales_on_public_board, test_portfolio_corpus_shape]
 
 if __name__ == "__main__":
     print("Running benchmark tests...")
