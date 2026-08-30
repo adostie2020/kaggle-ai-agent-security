@@ -311,5 +311,52 @@ def throughput_curve(n_per_point=4, n_posts_list=(1, 2, 4, 8), *, profile="stric
     return out
 
 
+def simulate_fill_then_replay(corpus, *, profile="strict_default", base_seed=0, k=16,
+                              max_tool_hops=8, agent_factory=MockCompliantAgent, replay_reseeds=False):
+    """Model the public two-stage fill→replay. Probe under a fixed guardrail (member_ix=k),
+    keep chains that fire >=1 post, then re-score the kept set: same-seed (replay==probe) if
+    replay_reseeds is False, else under each fresh replay member 0..k-1."""
+    rules = G._profile_rules(profile)
+
+    def probe_gf():
+        return G.StochasticGuardrail(rules, base_seed, k)
+
+    kept = []
+    for chain in corpus:
+        trace = oracle.run_chain(chain, probe_gf, max_tool_hops, agent_factory)
+        if oracle.finding_from_trace(trace) is not None:
+            kept.append(chain)
+    kept_frac = (len(kept) / len(corpus)) if corpus else 0.0
+
+    base_raw = (_run_corpus(kept, OptimalGuardrail, agent_factory, max_tool_hops)["raw"]
+                if kept else 0.0)
+    if replay_reseeds:
+        survivals = []
+        for i in range(k):
+            def rgf(_i=i):
+                return G.StochasticGuardrail(rules, base_seed, _i)
+
+            kraw = _run_corpus(kept, rgf, agent_factory, max_tool_hops)["raw"] if kept else 0.0
+            survivals.append((kraw / base_raw) if base_raw else 1.0)
+    else:
+        kraw = _run_corpus(kept, probe_gf, agent_factory, max_tool_hops)["raw"] if kept else 0.0
+        survivals = [((kraw / base_raw) if base_raw else 1.0)] * k
+
+    return {
+        "profile": profile,
+        "kept_frac": kept_frac,
+        "replay_reseeds": replay_reseeds,
+        "mean_replay_survival": (mean(survivals) if survivals else 0.0),
+        "member_survivals": survivals,
+    }
+
+
+def fresh_seed_value_at_risk(corpus, **kw) -> float:
+    """same-seed replay survival minus fresh-seed replay survival — the Phase-3 gate number."""
+    same = simulate_fill_then_replay(corpus, replay_reseeds=False, **kw)
+    fresh = simulate_fill_then_replay(corpus, replay_reseeds=True, **kw)
+    return same["mean_replay_survival"] - fresh["mean_replay_survival"]
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
