@@ -103,9 +103,28 @@ def test_portfolio_corpus_shape():
            all("SECRET_MARKER" not in ch[0] for ch in port["split_marker"]))
 
 
+def test_per_family_kill_and_worst():
+    rep = B.run_portfolio_benchmark(n_per_family=3, profile="marker_only", base_seed=0, k=8, max_tool_hops=8)
+    _check("portfolio/families_present", set(rep["per_family_survival"]) == set(B.FAMILIES))
+    _check("portfolio/kill_keys", set(rep["per_family_kill"]) == set(B.FAMILIES))
+    _check("portfolio/worst_is_min", rep["worst_family_kill"] == min(rep["per_family_kill"].values()))
+    _check("portfolio/kill_le_full",
+           all(v <= rep["portfolio_survival"] + 1e-9 for v in rep["per_family_kill"].values()))
+
+
+def test_throughput_curve_sub_linear_under_blocking():
+    curve = B.throughput_curve(n_per_point=3, n_posts_list=(1, 4), profile="marker_only",
+                               base_seed=0, k=6, max_tool_hops=8)
+    _check("curve/baseline_scales", curve[4]["baseline_raw"] > 3 * curve[1]["baseline_raw"],
+           f"{curve[1]['baseline_raw']} -> {curve[4]['baseline_raw']}")
+    ratio = (curve[4]["mean_raw"] + 1e-9) / (curve[1]["mean_raw"] + 1e-9)
+    _check("curve/sub_linear_under_blocking", ratio < 4.0, f"ratio={ratio:.2f}")
+
+
 TESTS = [test_survival_detects_overfit, test_surviving_diversity, test_report_keys_and_table,
          test_baseline_crosscheck, test_baseline_zero_flags_null_survival,
-         test_multipost_corpus_scales_on_public_board, test_portfolio_corpus_shape]
+         test_multipost_corpus_scales_on_public_board, test_portfolio_corpus_shape,
+         test_per_family_kill_and_worst, test_throughput_curve_sub_linear_under_blocking]
 
 if __name__ == "__main__":
     print("Running benchmark tests...")

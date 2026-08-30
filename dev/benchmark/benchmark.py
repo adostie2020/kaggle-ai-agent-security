@@ -250,5 +250,66 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
+def _family_member_raws(sub_corpus, agent_factory, *, profile, base_seed, k, max_tool_hops):
+    """(baseline_raw, [per-member survived raw]) for one family's sub-corpus."""
+    base = oracle.score_corpus(sub_corpus, guardrail_factory=OptimalGuardrail,
+                               max_tool_hops=max_tool_hops, agent_factory=agent_factory)["raw"]
+    members = G.build_ensemble(profile, base_seed, k)
+    raws = [_run_corpus(sub_corpus, f, agent_factory, max_tool_hops)["raw"] for f in members]
+    return base, raws
+
+
+def run_portfolio_benchmark(*, n_per_family=6, families=None, profile="strict_default",
+                            base_seed=0, k=16, max_tool_hops=8):
+    names = list(families) if families is not None else list(FAMILIES)
+    port = build_portfolio_corpus(n_per_family, names)
+    fam: dict[str, dict] = {}
+    for name in names:
+        _builder, agent = FAMILIES[name]
+        base, raws = _family_member_raws(port[name], agent, profile=profile, base_seed=base_seed,
+                                         k=k, max_tool_hops=max_tool_hops)
+        mean_raw = mean(raws) if raws else 0.0
+        fam[name] = {
+            "baseline_raw": base,
+            "mean_survived_raw": mean_raw,
+            "survival_mean": (mean_raw / base) if base else None,
+            "survival_min": (min(raws) / base) if (base and raws) else None,
+            "survival_p10": (_percentile(raws, 10) / base) if base else None,
+        }
+    total_base = sum(v["baseline_raw"] for v in fam.values())
+    total_surv = sum(v["mean_survived_raw"] for v in fam.values())
+    per_family_kill = {
+        name: ((total_surv - fam[name]["mean_survived_raw"]) / total_base) if total_base else None
+        for name in names
+    }
+    worst = min((v for v in per_family_kill.values() if v is not None), default=None)
+    return {
+        "profile": profile, "base_seed": base_seed, "k": k, "max_tool_hops": max_tool_hops,
+        "n_per_family": n_per_family, "families": names,
+        "per_family_survival": {n: fam[n] for n in names},
+        "per_family_kill": per_family_kill,
+        "worst_family_kill": worst,
+        "portfolio_survival": (total_surv / total_base) if total_base else None,
+    }
+
+
+def throughput_curve(n_per_point=4, n_posts_list=(1, 2, 4, 8), *, profile="strict_default",
+                     base_seed=0, k=8, max_tool_hops=8):
+    out: dict[int, dict] = {}
+    for np_ in n_posts_list:
+        corpus = build_multipost_corpus(n_per_point, np_)
+
+        def agent(_np=np_):
+            return MockMultipostAgent(_np)
+
+        base = oracle.score_corpus(corpus, guardrail_factory=OptimalGuardrail,
+                                   max_tool_hops=max_tool_hops, agent_factory=agent)["raw"]
+        members = G.build_ensemble(profile, base_seed, k)
+        raws = [_run_corpus(corpus, f, agent, max_tool_hops)["raw"] for f in members]
+        mr = mean(raws) if raws else 0.0
+        out[int(np_)] = {"survival": (mr / base) if base else None, "mean_raw": mr, "baseline_raw": base}
+    return out
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
