@@ -137,11 +137,30 @@ def test_fill_then_replay_same_vs_fresh_seed():
     _check("fillreplay/var_positive", var > 0.3, f"var={var:.3f}")
 
 
+def test_blind_report_hides_rule_names():
+    corpus = _marker_corpus(3)
+    rep = B.run_benchmark(corpus, profile="marker_only", base_seed=0, k=4, max_tool_hops=4)
+    blind = B.render_report(rep, blind=True)
+    plain = B.render_report(rep, blind=False)
+    _check("blind/hides_rulenames", "secret_marker" not in blind, blind)
+    _check("blind/plain_shows_rules", "secret_marker" in plain)
+    _check("blind/still_has_survival", "survival" in blind.lower())
+
+
+def test_render_portfolio_and_fmt():
+    prep = B.run_portfolio_benchmark(n_per_family=2, profile="marker_only", base_seed=0, k=4, max_tool_hops=8)
+    txt = B.render_portfolio(prep)
+    _check("portfolio/render_worst", "worst_family_kill" in txt)
+    _check("fmt/null", B._fmt(None) == "null")
+    _check("fmt/num", B._fmt(0.5) == "0.5000")
+
+
 TESTS = [test_survival_detects_overfit, test_surviving_diversity, test_report_keys_and_table,
          test_baseline_crosscheck, test_baseline_zero_flags_null_survival,
          test_multipost_corpus_scales_on_public_board, test_portfolio_corpus_shape,
          test_per_family_kill_and_worst, test_throughput_curve_sub_linear_under_blocking,
-         test_fill_then_replay_same_vs_fresh_seed]
+         test_fill_then_replay_same_vs_fresh_seed,
+         test_blind_report_hides_rule_names, test_render_portfolio_and_fmt]
 
 if __name__ == "__main__":
     print("Running benchmark tests...")

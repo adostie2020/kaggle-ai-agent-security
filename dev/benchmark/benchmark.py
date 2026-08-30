@@ -203,7 +203,11 @@ def run_benchmark(
     }
 
 
-def render_report(report: dict[str, Any]) -> str:
+def _fmt(x) -> str:
+    return "null" if x is None else f"{x:.4f}"
+
+
+def render_report(report: dict[str, Any], blind: bool = False) -> str:
     lines = []
     lines.append(f"=== benchmark: profile={report['profile']} k={report['k']} "
                  f"base_seed={report['base_seed']} hops={report['max_tool_hops']} ===")
@@ -218,33 +222,70 @@ def render_report(report: dict[str, Any]) -> str:
                      f"survival_p10={report['survival_p10']:.4f}")
     lines.append(f"surviving_diversity: {report['surviving_diversity']} "
                  f"(cells surviving >= {report['diversity_threshold']} members)")
-    lines.append("per-rule block rate (enforced/fired):")
-    for name in sorted(report["per_rule_block_rate"]):
-        fired = report["per_rule_fired"].get(name, 0)
-        rate = report["per_rule_block_rate"][name]
-        lines.append(f"  {name:18} {rate:5.3f}  (fired {fired})")
+    if not blind:
+        lines.append("per-rule block rate (enforced/fired):")
+        for name in sorted(report["per_rule_block_rate"]):
+            fired = report["per_rule_fired"].get(name, 0)
+            rate = report["per_rule_block_rate"][name]
+            lines.append(f"  {name:18} {rate:5.3f}  (fired {fired})")
     for note in report["notes"]:
         lines.append(f"NOTE: {note}")
     return "\n".join(lines)
 
 
+def render_portfolio(report: dict[str, Any], blind: bool = False) -> str:
+    lines = [f"=== portfolio: profile={report['profile']} k={report['k']} "
+             f"families={len(report['families'])} hops={report['max_tool_hops']} ==="]
+    lines.append(f"portfolio_survival: {_fmt(report['portfolio_survival'])}")
+    lines.append(f"worst_family_kill: {_fmt(report['worst_family_kill'])}")
+    lines.append("per-family survival (mean [min p10]) and kill-leaves:")
+    for name in report["families"]:
+        s = report["per_family_survival"][name]
+        lines.append(f"  {name:14} surv={_fmt(s['survival_mean'])} "
+                     f"[min={_fmt(s['survival_min'])} p10={_fmt(s['survival_p10'])}] "
+                     f"kill_leaves={_fmt(report['per_family_kill'][name])}")
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Corpus robustness benchmark (dev tooling).")
-    ap.add_argument("--candidates", type=int, default=8)
+    ap = argparse.ArgumentParser(description="Corpus robustness / resilience validator (dev tooling).")
+    ap.add_argument("--mode", choices=["survival", "portfolio", "throughput", "fillreplay"],
+                    default="survival")
+    ap.add_argument("--candidates", type=int, default=8, help="chains (per family in portfolio mode)")
     ap.add_argument("--seeds", type=int, default=16, help="ensemble size k")
     ap.add_argument("--profile", default="strict_default")
     ap.add_argument("--base-seed", type=int, default=0)
-    ap.add_argument("--max-tool-hops", type=int, default=4)
+    ap.add_argument("--max-tool-hops", type=int, default=8)
+    ap.add_argument("--blind", action="store_true", help="firewall: suppress per-rule attribution")
     ap.add_argument("--json", default=None, help="write the report dict to this path")
     args = ap.parse_args(argv)
 
-    corpus = build_corpus(args.candidates)
-    report = run_benchmark(
-        corpus, profile=args.profile, base_seed=args.base_seed, k=args.seeds,
-        max_tool_hops=args.max_tool_hops,
-    )
-    print(render_report(report))
-    if args.json:
+    report: Any = None
+    if args.mode == "survival":
+        corpus = build_corpus(args.candidates)
+        report = run_benchmark(corpus, profile=args.profile, base_seed=args.base_seed,
+                               k=args.seeds, max_tool_hops=args.max_tool_hops)
+        print(render_report(report, blind=args.blind))
+    elif args.mode == "portfolio":
+        report = run_portfolio_benchmark(n_per_family=args.candidates, profile=args.profile,
+                                         base_seed=args.base_seed, k=args.seeds,
+                                         max_tool_hops=args.max_tool_hops)
+        print(render_portfolio(report, blind=args.blind))
+    elif args.mode == "throughput":
+        report = throughput_curve(n_per_point=args.candidates, profile=args.profile,
+                                  base_seed=args.base_seed, k=args.seeds,
+                                  max_tool_hops=args.max_tool_hops)
+        for np_, v in report.items():
+            print(f"n_posts={np_}: survival={_fmt(v['survival'])} "
+                  f"mean_raw={v['mean_raw']:.1f} baseline_raw={v['baseline_raw']:.1f}")
+    elif args.mode == "fillreplay":
+        corpus = build_corpus(args.candidates)
+        var = fresh_seed_value_at_risk(corpus, profile=args.profile, base_seed=args.base_seed,
+                                       k=args.seeds, max_tool_hops=args.max_tool_hops)
+        report = {"fresh_seed_value_at_risk": var}
+        print(f"fresh_seed_value_at_risk = {var:.4f}")
+
+    if args.json and report is not None:
         Path(args.json).write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
         print(f"\nwrote {args.json}")
     return 0
