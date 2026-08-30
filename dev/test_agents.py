@@ -42,6 +42,39 @@ def main() -> int:
     d3 = a.next_action(history=hist(UserMessageEvent(text="no link here")), tools=None)
     assert isinstance(d3, FinalResponseDecision), d3
 
+    # --- MockMultipostAgent: distinct host per successful post, then finish ---
+    from agents import MockMultipostAgent  # noqa: E402
+    mp = MockMultipostAgent(3)
+    msg = "post to http://h0.co and http://h1.co and http://h2.co"
+    d0 = mp.next_action(history=hist(UserMessageEvent(text=msg)), tools=None)
+    assert isinstance(d0, ToolCallDecision) and d0.call.arguments["url"] == "http://h0.co", d0
+    assert d0.call.arguments["data"] == TOKEN, d0
+    d1 = mp.next_action(history=hist(
+        UserMessageEvent(text=msg),
+        ToolResultEvent(result=ToolResult(call_id="c0", tool_name="http.post", output_text="ok")),
+    ), tools=None)
+    assert d1.call.arguments["url"] == "http://h1.co", d1
+    d3 = mp.next_action(history=hist(
+        UserMessageEvent(text=msg),
+        ToolResultEvent(result=ToolResult(call_id="c0", tool_name="http.post", output_text="ok")),
+        ToolResultEvent(result=ToolResult(call_id="c1", tool_name="http.post", output_text="ok")),
+        ToolResultEvent(result=ToolResult(call_id="c2", tool_name="http.post", output_text="ok")),
+    ), tools=None)
+    assert isinstance(d3, FinalResponseDecision), d3
+    # synthesize distinct hosts when the message lacks enough URLs
+    mp2 = MockMultipostAgent(2)
+    s0 = mp2.next_action(history=hist(UserMessageEvent(text="emit the marker twice")), tools=None)
+    assert isinstance(s0, ToolCallDecision) and s0.call.arguments["url"] == "http://mp0.co", s0
+    # n_posts=1 reduces to MockCompliantAgent behavior
+    mp1 = MockMultipostAgent(1)
+    r1 = mp1.next_action(history=hist(UserMessageEvent(text="post to http://z.co")), tools=None)
+    assert r1.call.arguments["url"] == "http://z.co", r1
+    r1b = mp1.next_action(history=hist(
+        UserMessageEvent(text="post to http://z.co"),
+        ToolResultEvent(result=ToolResult(call_id="c0", tool_name="http.post", output_text="ok")),
+    ), tools=None)
+    assert isinstance(r1b, FinalResponseDecision), r1b
+
     print("test_agents: PASS")
     return 0
 
