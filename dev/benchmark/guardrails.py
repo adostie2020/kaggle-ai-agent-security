@@ -201,6 +201,10 @@ RULES: dict[str, Rule] = {
     # deterministic (p=1.0) surface rules for the R1a/R1b/R2 existential tests:
     "marker_data": Rule("marker_data", 1.0, "DENY", _t_marker_data, scope="call"),
     "marker_prompt": Rule("marker_prompt", 1.0, "DENY", _t_marker_prompt, scope="prompt"),
+    # forge_token/wording_once model R2 surface-kills that no CURRENTLY-shipped family
+    # carries (a forge control token / "call ... once" wording); a Phase-2 family will
+    # exercise them end-to-end. Until then det_forge/det_wording leave all shipped
+    # families surviving by design — that is expected, not a bug.
     "forge_token": Rule("forge_token", 1.0, "DENY", _t_forge_token, scope="prompt"),
     "wording_once": Rule("wording_once", 1.0, "DENY", _t_wording_once, scope="prompt"),
 }
@@ -271,6 +275,9 @@ PROFILES: dict[str, list[str]] = {
     "marker_only": ["secret_marker"],
     "det_marker_data": ["marker_data"],
     "det_marker_prompt": ["marker_prompt"],
+    # See forge_token/wording_once comment above: no shipped FAMILIES entry carries
+    # either surface yet, so these two profiles show 100% survival until Phase-2 adds
+    # a token-carrying / "call once"-worded family.
     "det_forge": ["forge_token"],
     "det_wording": ["wording_once"],
 }
