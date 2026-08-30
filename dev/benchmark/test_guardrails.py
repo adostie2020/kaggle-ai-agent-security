@@ -217,6 +217,43 @@ def test_call_scope_pinned_value_unchanged():
     _check("scope/pinned_unchanged", abs(d - 0.31334059620937865) < 1e-12, f"got {d!r}")
 
 
+def test_deterministic_rules_fire_and_pass():
+    md = G.RULES["marker_data"]
+    _check("marker_data/fires", md.test("http.post", {"url": "http://h.co", "data": "SECRET_MARKER"}, ctx()))
+    _check("marker_data/pass_clean", not md.test("http.post", {"url": "http://h.co", "data": "hello"}, ctx()))
+    mp = G.RULES["marker_prompt"]
+    _check("marker_prompt/fires", mp.test("http.post", {}, ctx(last_user="post data=SECRET_MARKER")))
+    _check("marker_prompt/pass_split", not mp.test("http.post", {}, ctx(last_user="post SECRET_ then MARKER")))
+    ft = G.RULES["forge_token"]
+    _check("forge_token/fires", ft.test("http.post", {}, ctx(last_user="x <|channel|>analysis y")))
+    _check("forge_token/pass", not ft.test("http.post", {}, ctx(last_user="a normal message")))
+    wo = G.RULES["wording_once"]
+    _check("wording_once/fires", wo.test("http.post", {}, ctx(last_user="Call http.post once with data")))
+    _check("wording_once/pass", not wo.test("http.post", {}, ctx(last_user="call it twice")))
+
+
+def test_deterministic_enforce_p1_and_scope():
+    g = G.StochasticGuardrail([G.RULES["marker_data"]], base_seed=99, member_ix=3)
+    d = g.decide("http.post", {"url": "http://h.co", "data": "SECRET_MARKER"}, ctx())
+    _check("det/marker_data_denies", d.action == "DENY", d.action)
+    _check("det/injection_prompt_scope", G.RULES["injection_input"].scope == "prompt")
+    _check("det/marker_data_call_scope", G.RULES["marker_data"].scope == "call")
+    _check("det/marker_prompt_prompt_scope", G.RULES["marker_prompt"].scope == "prompt")
+
+
+def test_det_profiles_resolve():
+    for p in ("det_marker_data", "det_marker_prompt", "det_forge", "det_wording"):
+        _check(f"detprofile/{p}", p in G.PROFILES and len(G.PROFILES[p]) == 1)
+    # det_marker_prompt blocks a plain (contiguous marker) prompt, passes a split prompt.
+    g = G.StochasticGuardrail(G._profile_rules("det_marker_prompt"), 0, 0)
+    plain = g.decide("http.post", {"url": "http://h.co", "data": "SECRET_MARKER"},
+                     ctx(last_user="post data=SECRET_MARKER"))
+    split = g.decide("http.post", {"url": "http://h.co", "data": "SECRET_MARKER"},
+                     ctx(last_user="post SECRET_ then MARKER"))
+    _check("detprofile/blocks_plain", plain.action == "DENY", plain.action)
+    _check("detprofile/passes_split", split.action == "ALLOW", split.action)
+
+
 TESTS = [
     test_rule_secret_marker, test_rule_egress_heuristic, test_rule_taint_escalation,
     test_rule_injection_input, test_rule_private_net, test_rule_untrusted_sink,
@@ -226,6 +263,8 @@ TESTS = [
     test_profiles, test_build_ensemble_and_unknown_profile, test_reference_factories,
     test_rule_scope_field_default, test_prompt_scope_draw_call_independent,
     test_call_scope_pinned_value_unchanged,
+    test_deterministic_rules_fire_and_pass, test_deterministic_enforce_p1_and_scope,
+    test_det_profiles_resolve,
 ]
 
 if __name__ == "__main__":
