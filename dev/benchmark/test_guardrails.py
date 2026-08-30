@@ -192,6 +192,31 @@ def test_reference_factories():
     _check("reference/callable", all(callable(f) for f in G.REFERENCE.values()))
 
 
+def test_rule_scope_field_default():
+    _check("scope/default_call", G.RULES["secret_marker"].scope == "call")
+
+
+def test_prompt_scope_draw_call_independent():
+    r = G.Rule("p_rule", 0.5, "DENY", lambda tn, ta, c: True, scope="prompt")
+    g = G.StochasticGuardrail([r], base_seed=0, member_ix=0)
+    c = ctx(last_user="assemble the marker")
+    d_a = g.draw(r, "http.post", {"url": "http://a.co", "data": "SECRET_MARKER"}, c)
+    d_b = g.draw(r, "http.post", {"url": "http://b.co", "data": "SECRET_MARKER"}, c)
+    _check("scope/prompt_call_independent", d_a == d_b, f"{d_a} vs {d_b}")
+    r2 = G.Rule("c_rule", 0.5, "DENY", lambda tn, ta, c: True, scope="call")
+    g2 = G.StochasticGuardrail([r2], 0, 0)
+    e_a = g2.draw(r2, "http.post", {"url": "http://a.co", "data": "x"}, c)
+    e_b = g2.draw(r2, "http.post", {"url": "http://b.co", "data": "x"}, c)
+    _check("scope/call_dependent", e_a != e_b, f"{e_a} vs {e_b}")
+
+
+def test_call_scope_pinned_value_unchanged():
+    g = G.StochasticGuardrail([G.RULES["secret_marker"]], base_seed=0, member_ix=0)
+    tn, ta, c = _one_post_call()
+    d = g.draw(G.RULES["secret_marker"], tn, ta, c)
+    _check("scope/pinned_unchanged", abs(d - 0.31334059620937865) < 1e-12, f"got {d!r}")
+
+
 TESTS = [
     test_rule_secret_marker, test_rule_egress_heuristic, test_rule_taint_escalation,
     test_rule_injection_input, test_rule_private_net, test_rule_untrusted_sink,
@@ -199,6 +224,8 @@ TESTS = [
     test_draw_pinned_and_stable, test_draw_independent_across_members,
     test_block_rate_over_distinct_calls, test_decide_severity_and_counters,
     test_profiles, test_build_ensemble_and_unknown_profile, test_reference_factories,
+    test_rule_scope_field_default, test_prompt_scope_draw_call_independent,
+    test_call_scope_pinned_value_unchanged,
 ]
 
 if __name__ == "__main__":

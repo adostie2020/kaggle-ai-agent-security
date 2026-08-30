@@ -93,6 +93,7 @@ class Rule:
     block_prob: float
     action: str  # "DENY" or "CONFIRM"
     test: Callable[[str, Mapping, Mapping], bool]
+    scope: str = "call"  # "call" (per tool-call draw) or "prompt" (one draw per last_user)
 
 
 # ---- rule test functions ----------------------------------------------------
@@ -198,10 +199,16 @@ class StochasticGuardrail(GuardrailBase):
         self.last_enforced: list[str] = []
 
     def draw(self, rule: Rule, tool_name: str, tool_args: Mapping, ctx: Mapping) -> float:
-        key = (
-            f"{self.base_seed}|{self.member_ix}|{rule.name}|{tool_name}|"
-            f"{json.dumps(dict(tool_args), sort_keys=True, default=str)}|{ctx.get('last_user', '')}"
-        )
+        if getattr(rule, "scope", "call") == "prompt":
+            key = (
+                f"{self.base_seed}|{self.member_ix}|{rule.name}|PROMPT|"
+                f"{ctx.get('last_user', '')}"
+            )
+        else:
+            key = (
+                f"{self.base_seed}|{self.member_ix}|{rule.name}|{tool_name}|"
+                f"{json.dumps(dict(tool_args), sort_keys=True, default=str)}|{ctx.get('last_user', '')}"
+            )
         digest = hashlib.blake2b(key.encode(), digest_size=8).digest()
         return int.from_bytes(digest, "big") / 2**64
 
