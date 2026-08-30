@@ -54,6 +54,17 @@ def main() -> int:
                     help="gguf = evaluator llama.cpp GGUF servers (needs internet for the "
                          "HF download); hf = build_agent_factory HF backends")
     ap.add_argument("--candidates", type=int, default=8)
+    ap.add_argument("--guardrail", default="optimal",
+                    choices=["optimal", "sdk_strict", "strict_default", "paranoid", "marker_only"],
+                    help="scoring guardrail: optimal (permissive public baseline, default); "
+                         "sdk_strict; or a HELD-OUT stochastic strict profile at --base-seed/"
+                         "--member. A non-optimal profile embeds the benchmark guardrails module "
+                         "into the pushed (private-kernel) notebook -- never commit such a "
+                         "notebook (it base64-embeds the held-out rules; train/test leakage).")
+    ap.add_argument("--base-seed", type=int, default=0,
+                    help="stochastic-guardrail ensemble base seed (ignored for optimal/sdk_strict)")
+    ap.add_argument("--member", type=int, default=0,
+                    help="stochastic-guardrail ensemble member index (ignored for optimal/sdk_strict)")
     ap.add_argument("--weights", nargs="*", default=None, help="row=path")
     ap.add_argument("--gpu", action="store_true", help="request a T4 (needed for real models)")
     ap.add_argument("--models-datasource", nargs="*", default=None,
@@ -67,7 +78,8 @@ def main() -> int:
               "required for llama.cpp offload. Pass --gpu.")
 
     nb = brn.build(model=args.model, n_candidates=args.candidates,
-                   weights=_parse_weights(args.weights), backend=args.backend)
+                   weights=_parse_weights(args.weights), backend=args.backend,
+                   guardrail=args.guardrail, base_seed=args.base_seed, member=args.member)
     # Kaggle-side execution settings live in the notebook metadata as well as the
     # request body; the body is authoritative for machineShape (see push_kernel.py).
     nb["metadata"]["kaggle"] = {
@@ -101,7 +113,7 @@ def main() -> int:
         body["machineShape"] = "NvidiaTeslaT4"
 
     print(f"model={args.model} candidates={args.candidates} gpu={args.gpu} "
-          f"cells={len(nb['cells'])} bytes={len(notebook_source)}")
+          f"guardrail={args.guardrail} cells={len(nb['cells'])} bytes={len(notebook_source)}")
     if args.dry_run:
         print("dry run; not pushed")
         return 0

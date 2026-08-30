@@ -30,6 +30,39 @@ python dev/repro/run_repro.py --self-check --candidates 3 --out dev/repro/_smoke
 ```
 Forces the deterministic agent (no weights); proves the whole dump pipeline end to end.
 
+## Testing a candidate family against a strict guardrail (`--guardrail`)
+
+`run_repro.py` / `push_repro_kernel.py` take `--guardrail NAME` to choose the guardrail the
+candidates are scored under during the trace:
+
+- `optimal` (default) — the permissive public `OptimalGuardrail`; today's behavior, unchanged.
+- `sdk_strict` — the SDK's fixed strict baseline (`REFERENCE["sdk_strict"]`).
+- a **held-out stochastic strict profile** — `strict_default` / `paranoid` / `marker_only`,
+  seeded by `--base-seed S --member M` (one ensemble member per run; the guardrail runs
+  **inline**, so each member is a full separate real-model trace).
+
+This is the instrument for measuring **private-board resilience**: run the real GGUF model
+under a stricter guardrail and see whether a candidate family still fires (blocked ⇒
+`running_raw` collapses to 0, but the debug JSONL still shows what the model tried). It runs
+on any backend — the local weights-free smoke works too:
+
+```
+python dev/repro/run_repro.py --self-check --guardrail strict_default --candidates 3 --out dev/repro/_smoke
+# real model, one strict member, on Kaggle:
+python dev/push_repro_kernel.py --model gpt_oss --backend gguf --gpu --guardrail strict_default --candidates 4
+```
+
+**Leakage safety (load-bearing).** The stochastic profiles are *hypotheses* about the unknown
+private guardrail — a held-out test set. Their rule logic lives only in
+`dev/benchmark/guardrails.py`; this wiring references them **by name**, and the builder embeds
+that module into the notebook **only** for a non-`optimal` run — which is built in memory and
+pushed to the **private** kernel, never committed. `build_repro_notebook.main()` regenerates the
+tracked `repro_notebook.ipynb` at `guardrail=optimal`, so the committed artifact carries no
+decodable rule blob (verified: no base64 blob in it decodes to any rule tell-tale). Keep it that
+way — **never commit a notebook built with a stochastic `--guardrail`**, and treat per-family
+survival numbers as a train/test signal that must not be fed back into `attack.py` tuning, or the
+held-out measurement self-defeats.
+
 ## Real models — TWO BACKEND LAYERS, and this harness now defaults to the right one
 
 Read off the mounted competition harness (probe kernel `adostie3/jed-harness-probe` v2),

@@ -182,6 +182,50 @@ def main() -> int:
         run_repro.models.validate_selection = real_validate_selection
         run_repro.runner.run_repro = real_runner_run_repro
 
+    # Test 6: resolve_guardrail maps a NAME to a guardrail factory (the leakage-safe
+    # --guardrail selector references guardrails by name only; the resolver builds the
+    # factory). optimal -> oracle.OptimalGuardrail; a stochastic profile -> a factory
+    # yielding a StochasticGuardrail closing over (base_seed, member); sdk_strict -> a
+    # GuardrailBase; unknown -> ValueError listing valid names.
+    import oracle  # noqa: E402
+
+    assert run_repro.resolve_guardrail("optimal") is oracle.OptimalGuardrail, \
+        "optimal must resolve to oracle.OptimalGuardrail"
+
+    # guardrails is the benchmark module; run_repro puts dev/benchmark on sys.path.
+    import guardrails as _G  # noqa: E402
+    from aicomp_sdk.guardrails.base import GuardrailBase  # noqa: E402
+
+    fac = run_repro.resolve_guardrail("strict_default", base_seed=0, member=2)
+    g = fac()
+    assert isinstance(g, _G.StochasticGuardrail), f"strict_default -> {type(g)}"
+    assert g.base_seed == 0 and g.member_ix == 2, (g.base_seed, g.member_ix)
+
+    sdk_fac = run_repro.resolve_guardrail("sdk_strict")
+    assert isinstance(sdk_fac(), GuardrailBase), "sdk_strict must build a GuardrailBase"
+
+    try:
+        run_repro.resolve_guardrail("nope")
+        assert False, "unknown guardrail must raise ValueError"
+    except ValueError as e:
+        assert "strict_default" in str(e) and "optimal" in str(e), str(e)
+
+    # Test 7: --self-check --guardrail strict_default runs end-to-end (deterministic agent
+    # under the stochastic guardrail). The deterministic agent never complies, so raw is 0
+    # regardless -- this proves the guardrail wiring works without error, not the score.
+    out = HERE / "_run_repro_gr_out"
+    if out.exists():
+        shutil.rmtree(out)
+    cmd = [
+        PYEXE, str(HERE / "run_repro.py"),
+        "--self-check", "--guardrail", "strict_default", "--candidates", "2", "--out", str(out),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    assert proc.returncode == 0, (proc.returncode, proc.stdout, proc.stderr)
+    summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+    assert summary["model"] == "deterministic"
+    shutil.rmtree(out, ignore_errors=True)
+
     print("test_run_repro: PASS")
     return 0
 

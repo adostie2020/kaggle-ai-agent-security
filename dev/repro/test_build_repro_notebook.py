@@ -92,6 +92,29 @@ def main() -> int:
     dsrc = "\n".join("".join(c["source"]) for c in d["cells"])
     assert "llama-cpp-python" not in dsrc, "deterministic must not install llama.cpp"
 
+    # --guardrail wiring: a stochastic profile threads the selector into the run cell and
+    # embeds the benchmark guardrails module so the kernel can import it (push-only path).
+    gg = b.build(model="gpt_oss", n_candidates=2, guardrail="strict_default",
+                 base_seed=0, member=1)
+    gg_all = "\n".join("".join(c["source"]) for c in gg["cells"])
+    assert "--guardrail" in gg_all and "strict_default" in gg_all, "guardrail not wired into run cell"
+    assert "--member" in gg_all, "member not wired into run cell"
+    gg_embed = ["".join(c["source"]) for c in gg["cells"]
+                if c["cell_type"] == "code" and "b64decode" in "".join(c["source"])]
+    assert len(gg_embed) == 1, f"expected 1 embed cell, found {len(gg_embed)}"
+    assert "/kaggle/working/repro_pkg/guardrails.py" in gg_embed[0], \
+        "stochastic guardrail run must embed the benchmark guardrails module"
+
+    # LEAKAGE SAFETY: the default (optimal) build must NOT embed guardrails.py. The
+    # committed reference notebook is built via main() at guardrail=optimal, so it must
+    # never carry the held-out hypothesis rules (a base64 blob the attack.py session could
+    # decode). Only the push path, built in memory with a stochastic --guardrail, embeds them.
+    opt = b.build(model="gpt_oss", n_candidates=2)  # guardrail defaults to optimal
+    opt_embed = ["".join(c["source"]) for c in opt["cells"]
+                 if c["cell_type"] == "code" and "b64decode" in "".join(c["source"])][0]
+    assert "/kaggle/working/repro_pkg/guardrails.py" not in opt_embed, \
+        "optimal build must NOT embed the guardrails rules (leakage into committed notebook)"
+
     print("test_build_repro_notebook: PASS")
     return 0
 

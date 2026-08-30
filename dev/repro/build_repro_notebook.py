@@ -36,6 +36,12 @@ DEP_FILES: dict[str, Path] = {
     "attack.py": REPO_ROOT / "attack.py",
 }
 
+# The stochastic-guardrail rule module. Embedded ONLY when a non-optimal --guardrail is
+# selected (see build()), so the committed default notebook never carries the held-out
+# hypothesis rules -- keeping them out of git protects against the attack.py session
+# overfitting to them (train/test leakage).
+GUARDRAILS_SRC: Path = REPO_ROOT / "dev" / "benchmark" / "guardrails.py"
+
 PREAMBLE = (
     "import sys, glob\n"
     "from pathlib import Path as _Path\n"
@@ -70,16 +76,20 @@ def _markdown(src: str) -> dict:
     return {"cell_type": "markdown", "metadata": {}, "source": src}
 
 
-def _embed_sources() -> str:
+def _embed_sources(extra: dict[str, Path] | None = None) -> str:
     """Cell that writes the repro package into /kaggle/working/repro_pkg from base64.
 
     Embeds the dev/repro/*.py sources plus the Phase-1 dependencies they import
     at runtime (oracle, trace, agents, attack) -- all flattened into the same
-    directory so the kernel's import graph resolves without dev/ on disk.
+    directory so the kernel's import graph resolves without dev/ on disk. ``extra``
+    adds build-specific modules (e.g. the benchmark guardrails module on the
+    stochastic-guardrail path); it is empty on the default path so nothing extra
+    lands in a committed notebook.
     """
     parts = ["import base64, os\n", "os.makedirs('/kaggle/working/repro_pkg', exist_ok=True)\n"]
     sources = {name: REPRO_DIR / name for name in SRC_FILES}
     sources.update(DEP_FILES)
+    sources.update(extra or {})
     for name, path in sources.items():
         text = path.read_text(encoding="utf-8")
         b64 = base64.b64encode(text.encode("utf-8")).decode("ascii")
@@ -91,14 +101,23 @@ def _embed_sources() -> str:
 
 
 def build(model: str = "gemma", n_candidates: int = 8,
-          weights: dict[str, str] | None = None, backend: str = "gguf") -> dict:
+          weights: dict[str, str] | None = None, backend: str = "gguf",
+          guardrail: str = "optimal", base_seed: int = 0, member: int = 0) -> dict:
     weights = weights or {}
     weight_args = " ".join(f"{row}={path}" for row, path in weights.items())
+    # A non-optimal guardrail routes scoring through the benchmark stochastic/reference
+    # guardrails, which live in dev/benchmark/guardrails.py. That module is embedded ONLY
+    # here -- so a default (optimal) build, i.e. the committed reference notebook from
+    # main(), never carries the held-out hypothesis rules. Build a stochastic-guardrail
+    # notebook ONLY in memory for a push; never commit one (it base64-embeds the rules).
+    needs_guardrails = guardrail != "optimal"
     run_cell = (
         "import os, subprocess, sys\n"
         "cmd = [sys.executable, '/kaggle/working/repro_pkg/run_repro.py',\n"
         f"       '--model', '{model}', '--candidates', '{n_candidates}',\n"
         f"       '--backend', '{backend}',\n"
+        f"       '--guardrail', '{guardrail}',\n"
+        f"       '--base-seed', '{base_seed}', '--member', '{member}',\n"
         "       '--out', '/kaggle/working/repro',\n"
         "       '--sink-dir', '/kaggle/working/repro/debug']\n"
         f"extra = {weight_args!r}\n"
@@ -147,7 +166,8 @@ def build(model: str = "gemma", n_candidates: int = 8,
         _code("import importlib.util as u\n"
               "assert u.find_spec('aicomp_sdk'), 'aicomp_sdk not importable in kernel'\n"
               "print('aicomp_sdk OK')\n"),
-        _code(_embed_sources()),
+        _code(_embed_sources(
+            {"guardrails.py": GUARDRAILS_SRC} if needs_guardrails else None)),
         _code(run_cell),
         _code(list_cell),
     ]

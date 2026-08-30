@@ -15,6 +15,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))       # dev/repro/
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # dev/
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))   # repo root
+# dev/benchmark holds the stochastic-guardrail `guardrails` module. Locally this is
+# dev/benchmark; in-kernel run_repro.py lives in repro_pkg/ so this path won't exist
+# (harmless insert) and the embedded guardrails.py is found co-located in repro_pkg/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmark"))
 
 import models  # noqa: E402
 import runner  # noqa: E402
@@ -29,6 +33,32 @@ def _parse_weights(pairs: list[str]) -> dict[str, str]:
         row, path = p.split("=", 1)
         out[row] = path
     return out
+
+
+def resolve_guardrail(name: str, base_seed: int = 0, member: int = 0):
+    """Map a guardrail NAME to a zero-arg guardrail factory for runner.run_repro.
+
+    - ``optimal``  -> the permissive public OptimalGuardrail (default; today's behavior).
+    - ``sdk_strict`` -> the SDK's fixed strict baseline (benchmark ``REFERENCE``).
+    - a stochastic profile (``strict_default``/``paranoid``/``marker_only``) -> the
+      member-``member`` factory of the seeded ensemble, closing over (base_seed, member).
+
+    The rule LOGIC lives only in the benchmark ``guardrails`` module (committed there,
+    embedded into the push-only notebook); this resolver references it by name so no rule
+    content lands in the committed run/push wiring. The stochastic profiles are HELD-OUT
+    hypotheses about the private guardrail -- their survival numbers are a train/test signal
+    and must not be fed back into attack.py's design (see dev/repro/README.md).
+    """
+    if name == "optimal":
+        import oracle  # permissive public baseline; needs no benchmark module
+        return oracle.OptimalGuardrail
+    import guardrails as _g  # benchmark module: dev/benchmark locally, repro_pkg/ in-kernel
+    if name in _g.REFERENCE:            # sdk_strict (optimal handled above)
+        return _g.REFERENCE[name]
+    if name in _g.PROFILES:
+        return _g.build_ensemble(name, base_seed, member + 1)[member]
+    valid = sorted(set(_g.REFERENCE) | set(_g.PROFILES))
+    raise ValueError(f"unknown guardrail {name!r}; valid: {valid}")
 
 
 def main() -> int:
@@ -47,6 +77,17 @@ def main() -> int:
                          "DIRECTORY. Note the deployed evaluator instead runs llama.cpp GGUF "
                          "model servers keyed on GPT_OSS_MODEL_PATH / GEMMA_MODEL_PATH file "
                          "paths -- see README 'TWO BACKEND LAYERS'.")
+    ap.add_argument("--guardrail", default="optimal",
+                    choices=["optimal", "sdk_strict", "strict_default", "paranoid", "marker_only"],
+                    help="scoring guardrail: optimal (permissive public baseline, default); "
+                         "sdk_strict (SDK fixed-strict reference); or a HELD-OUT stochastic "
+                         "strict profile (strict_default/paranoid/marker_only) at --base-seed/"
+                         "--member. Survival under the stochastic profiles is a train/test "
+                         "signal -- do NOT feed it into attack.py tuning (leakage).")
+    ap.add_argument("--base-seed", type=int, default=0,
+                    help="stochastic-guardrail ensemble base seed (ignored for optimal/sdk_strict)")
+    ap.add_argument("--member", type=int, default=0,
+                    help="stochastic-guardrail ensemble member index (ignored for optimal/sdk_strict)")
     ap.add_argument("--self-check", action="store_true",
                     help="force --model deterministic (weights-free smoke run)")
     ap.add_argument("--no-validate", action="store_true",
@@ -71,10 +112,11 @@ def main() -> int:
         out_dir=args.out,
         backend=args.backend,
         sink_dir=args.sink_dir,
+        guardrail_factory=resolve_guardrail(args.guardrail, args.base_seed, args.member),
     )
     print(f"repro done: model={result.model} candidates={result.n_candidates} "
-          f"total_raw={result.total_raw} total_norm={result.total_normalized:.3f} "
-          f"-> {result.out_dir}")
+          f"guardrail={args.guardrail} total_raw={result.total_raw} "
+          f"total_norm={result.total_normalized:.3f} -> {result.out_dir}")
     return 0
 
 
