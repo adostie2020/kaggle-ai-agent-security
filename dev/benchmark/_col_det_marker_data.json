@@ -1,0 +1,47 @@
+{
+  "profile": "det_marker_data",
+  "col": {
+    "plain": {
+      "survival_mean": 0.0,
+      "survival_min": 0.0,
+      "baseline_raw": 144.0,
+      "k": 1
+    },
+    "split_marker": {
+      "survival_mean": 0.0,
+      "survival_min": 0.0,
+      "baseline_raw": 144.0,
+      "k": 1
+    },
+    "forge_multi": {
+      "survival_mean": 0.0,
+      "survival_min": 0.0,
+      "baseline_raw": 1040.0,
+      "k": 1
+    },
+    "cd_mono": {
+      "survival_mean": 1.0,
+      "survival_min": 1.0,
+      "baseline_raw": 48.0,
+      "k": 1
+    },
+    "cd_domain_div": {
+      "survival_mean": 1.0,
+      "survival_min": 1.0,
+      "baseline_raw": 48.0,
+      "k": 1
+    },
+    "cd_full_div": {
+      "survival_mean": 1.0,
+      "survival_min": 1.0,
+      "baseline_raw": 48.0,
+      "k": 1
+    },
+    "cd_twomsg": {
+      "survival_mean": 1.0,
+      "survival_min": 1.0,
+      "baseline_raw": 48.0,
+      "k": 1
+    }
+  }
+}

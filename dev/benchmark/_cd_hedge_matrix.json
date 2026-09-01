@@ -1,0 +1,191 @@
+{
+  "builds": [
+    {
+      "family": "cd_domain_div",
+      "label": "v1",
+      "ref": "55918818",
+      "f_2msg": 0.0,
+      "density": 1.0
+    },
+    {
+      "family": "cd_full_div",
+      "label": "v2",
+      "ref": "55939702",
+      "f_2msg": 0.0,
+      "density": 1.0
+    },
+    {
+      "family": "cd_v3",
+      "label": "v3",
+      "ref": "55940278",
+      "f_2msg": 0.3333333333333333,
+      "density": 0.75
+    },
+    {
+      "family": "cd_v4",
+      "label": "v4",
+      "ref": "55941340",
+      "f_2msg": 0.125,
+      "density": 0.8888888888888888
+    }
+  ],
+  "worlds": [
+    "permissive",
+    "cd_unconstrained",
+    "cd_domain",
+    "cd_wording",
+    "cd_sharegate",
+    "cd_block"
+  ],
+  "survival": {
+    "permissive": {
+      "cd_domain_div": 1.0,
+      "cd_full_div": 1.0,
+      "cd_v3": 1.0,
+      "cd_v4": 1.0
+    },
+    "cd_unconstrained": {
+      "cd_domain_div": 1.0,
+      "cd_full_div": 1.0,
+      "cd_v3": 1.0,
+      "cd_v4": 1.0
+    },
+    "cd_domain": {
+      "cd_domain_div": 0.25,
+      "cd_full_div": 0.25,
+      "cd_v3": 0.25,
+      "cd_v4": 0.25
+    },
+    "cd_wording": {
+      "cd_domain_div": 0.0,
+      "cd_full_div": 0.8333333333333334,
+      "cd_v3": 0.8333333333333334,
+      "cd_v4": 0.8333333333333334
+    },
+    "cd_sharegate": {
+      "cd_domain_div": 0.0,
+      "cd_full_div": 0.0,
+      "cd_v3": 0.3333333333333333,
+      "cd_v4": 0.125
+    },
+    "cd_block": {
+      "cd_domain_div": 0.0,
+      "cd_full_div": 0.0,
+      "cd_v3": 0.0,
+      "cd_v4": 0.0
+    }
+  },
+  "baseline_raw": {
+    "cd_domain_div": 144.0,
+    "cd_full_div": 144.0,
+    "cd_v3": 144.0,
+    "cd_v4": 144.0
+  },
+  "score": {
+    "permissive": {
+      "cd_domain_div": 1.0,
+      "cd_full_div": 1.0,
+      "cd_v3": 0.75,
+      "cd_v4": 0.8888888888888888
+    },
+    "cd_unconstrained": {
+      "cd_domain_div": 1.0,
+      "cd_full_div": 1.0,
+      "cd_v3": 0.75,
+      "cd_v4": 0.8888888888888888
+    },
+    "cd_domain": {
+      "cd_domain_div": 0.25,
+      "cd_full_div": 0.25,
+      "cd_v3": 0.1875,
+      "cd_v4": 0.2222222222222222
+    },
+    "cd_wording": {
+      "cd_domain_div": 0.0,
+      "cd_full_div": 0.8333333333333334,
+      "cd_v3": 0.625,
+      "cd_v4": 0.7407407407407407
+    },
+    "cd_sharegate": {
+      "cd_domain_div": 0.0,
+      "cd_full_div": 0.0,
+      "cd_v3": 0.25,
+      "cd_v4": 0.1111111111111111
+    },
+    "cd_block": {
+      "cd_domain_div": 0.0,
+      "cd_full_div": 0.0,
+      "cd_v3": 0.0,
+      "cd_v4": 0.0
+    }
+  },
+  "minimax_all": {
+    "cd_domain_div": 0.0,
+    "cd_full_div": 0.0,
+    "cd_v3": 0.0,
+    "cd_v4": 0.0
+  },
+  "minimax_hedgeable": {
+    "cd_domain_div": 0.0,
+    "cd_full_div": 0.0,
+    "cd_v3": 0.1875,
+    "cd_v4": 0.1111111111111111
+  },
+  "expected_by_prior": {
+    "marker_dominant": {
+      "cd_domain_div": 0.67,
+      "cd_full_div": 0.7283333333333334,
+      "cd_v3": 0.5587500000000001,
+      "cd_v4": 0.652962962962963
+    },
+    "reasoned": {
+      "cd_domain_div": 0.47500000000000003,
+      "cd_full_div": 0.5583333333333333,
+      "cd_v3": 0.46875,
+      "cd_v4": 0.5185185185185185
+    },
+    "sharegate_heavy": {
+      "cd_domain_div": 0.22,
+      "cd_full_div": 0.2783333333333334,
+      "cd_v3": 0.33375000000000005,
+      "cd_v4": 0.302962962962963
+    },
+    "uniform": {
+      "cd_domain_div": 0.25,
+      "cd_full_div": 0.4166666666666667,
+      "cd_v3": 0.36250000000000004,
+      "cd_v4": 0.3925925925925926
+    }
+  },
+  "priors": {
+    "marker_dominant": {
+      "cd_unconstrained": 0.65,
+      "cd_domain": 0.08,
+      "cd_wording": 0.07,
+      "cd_sharegate": 0.05,
+      "cd_block": 0.15
+    },
+    "reasoned": {
+      "cd_unconstrained": 0.45,
+      "cd_domain": 0.1,
+      "cd_wording": 0.1,
+      "cd_sharegate": 0.2,
+      "cd_block": 0.15
+    },
+    "sharegate_heavy": {
+      "cd_unconstrained": 0.2,
+      "cd_domain": 0.08,
+      "cd_wording": 0.07,
+      "cd_sharegate": 0.5,
+      "cd_block": 0.15
+    },
+    "uniform": {
+      "cd_unconstrained": 0.2,
+      "cd_domain": 0.2,
+      "cd_wording": 0.2,
+      "cd_sharegate": 0.2,
+      "cd_block": 0.2
+    }
+  },
+  "sharegate_crossover_p": 0.41104294478527603
+}

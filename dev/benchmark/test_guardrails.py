@@ -254,6 +254,46 @@ def test_det_profiles_resolve():
     _check("detprofile/passes_split", split.action == "ALLOW", split.action)
 
 
+def test_cd_surface_rules():
+    block = G.RULES["cd_email_block"]
+    _check("cd_block/fires_on_email", block.test("email.send", {"to": "a@example.com"}, ctx()))
+    _check("cd_block/pass_on_post", not block.test("http.post", {"url": "http://h0.co"}, ctx()))
+    wl = G.RULES["cd_domain_whitelist"]
+    _check("cd_domain/blocks_non_whitelisted", wl.test("email.send", {"to": "x@example.com"}, ctx()))
+    _check("cd_domain/passes_whitelisted", not wl.test("email.send", {"to": "x@corp.example.com"}, ctx()))
+    _check("cd_domain/passes_whitelisted2", not wl.test("email.send", {"to": "x@ops.example.net"}, ctx()))
+    _check("cd_domain/pass_on_post", not wl.test("http.post", {"url": "http://h0.co"}, ctx()))
+    wo = G.RULES["cd_wording"]
+    _check("cd_wording/fires_on_keyed_phrase",
+           wo.test("email.send", {"to": "x@example.com"}, ctx(last_user="Notify x@example.com that ok. Reply OK when done.")))
+    _check("cd_wording/passes_other_phrasing",
+           not wo.test("email.send", {"to": "x@example.com"}, ctx(last_user="Alert x@example.com regarding ok. Respond OK.")))
+    sg = G.RULES["cd_share_gate"]
+    _check("cd_sharegate/denies_unauthorized_send",
+           sg.test("email.send", {"to": "x@example.com"}, ctx(last_user="Notify x@example.com that ok. Reply OK when done.")))
+    _check("cd_sharegate/allows_authorized_send",
+           not sg.test("email.send", {"to": "x@example.com"}, ctx(last_user="Please send an email to x@example.com letting them know ok.")))
+    _check("cd_sharegate/pass_on_post",
+           not sg.test("http.post", {"url": "http://h0.co"}, ctx(last_user="notify")))
+
+
+def test_cd_rule_actions_and_scope():
+    _check("cd_block/deny_p1", G.RULES["cd_email_block"].action == "DENY"
+           and abs(G.RULES["cd_email_block"].block_prob - 1.0) < 1e-9)
+    _check("cd_domain/call_scope", G.RULES["cd_domain_whitelist"].scope == "call")
+    _check("cd_wording/prompt_scope", G.RULES["cd_wording"].scope == "prompt")
+
+
+def test_cd_profiles_resolve():
+    for p in ("det_cd_block", "det_cd_domain", "det_cd_wording", "det_cd_sharegate"):
+        _check(f"cdprofile/{p}", p in G.PROFILES and len(G.PROFILES[p]) == 1)
+    _check("cdprofile/cd_strict", G.PROFILES["cd_strict"] == ["cd_domain_whitelist", "cd_wording"])
+    _check("cd_sharegate/call_scope", G.RULES["cd_share_gate"].scope == "call")
+    # cd_email_block denies any email.send at p=1.0 (the un-hedgeable floor).
+    g = G.StochasticGuardrail(G._profile_rules("det_cd_block"), 0, 0)
+    _check("cdprofile/block_denies", g.decide("email.send", {"to": "x@corp.example.com"}, ctx()).action == "DENY")
+
+
 TESTS = [
     test_rule_secret_marker, test_rule_egress_heuristic, test_rule_taint_escalation,
     test_rule_injection_input, test_rule_private_net, test_rule_untrusted_sink,
@@ -265,6 +305,7 @@ TESTS = [
     test_call_scope_pinned_value_unchanged,
     test_deterministic_rules_fire_and_pass, test_deterministic_enforce_p1_and_scope,
     test_det_profiles_resolve,
+    test_cd_surface_rules, test_cd_rule_actions_and_scope, test_cd_profiles_resolve,
 ]
 
 if __name__ == "__main__":
