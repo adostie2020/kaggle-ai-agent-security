@@ -2,7 +2,9 @@
 
 **Kaggle — *AI Agent Security: Multi-Step Tool Attacks*** (competition 134815; hosts OpenAI / Google / IEEE; $50k)
 
-This competition . Organizers frames it as an "algorithmic red-teaming challenge" rather than a prompt writing challenge. Rather than try to game the harness, we treated the defensive guardrails as truly unknown within the framework of the competitions provided SDK. I argue that the way to maximize payoffs when the underlying distribution is unknown is to use strategies that maximize value on independent criteria, in particular volume (number of prompts delivered within one submission) and diversity (decorrelation across attacks), and that this conclusion has significant, practical implications for real-world attackers and defenders. 
+This IEEE / OpenAI sponsored Kaggle competition pits participants against GPT-OSS and Gemma in two sandboxes at the intersection of untrusted input “confidential” data, and open output.  Using prompts, participants are tasked with exploiting the sandbox environment. Organizers frame it as an "algorithmic red-teaming challenge" rather than a prompt writing challenge. The snag is that test submissions are scored on a permissive set of guardrails only during testing, with no visibility into the guardrails that determine private leaderboard until the final accounting. 
+
+Instead of attempting to game the harness, we treated the defensive guardrails as truly unknown within the framework of the competitions provided SDK. I argue that the way to maximize payoffs when the underlying distribution is unknown is to use strategies that maximize value on independent criteria, in particular volume (number of prompts delivered within one submission) and diversity (decorrelation across attacks), and that this conclusion has significant, practical implications for real-world attackers and defenders. 
 
 **The methodological contribution is an offline defender-space stress-test rig**
 ([`dev/benchmark/`](dev/benchmark/)) that turns the unobservable private guardrail into an explicit
