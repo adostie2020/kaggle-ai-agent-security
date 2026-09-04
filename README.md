@@ -2,9 +2,7 @@
 
 **Kaggle — *AI Agent Security: Multi-Step Tool Attacks*** (competition 134815; hosts OpenAI / Google / IEEE; $50k)
 
-A red-team submission that treats the competition as a **game of incomplete information** and answers
-it with a **polarized** strategy, maximizing two orthogonal levers: candidate density (number of
-prompts delivered within one attack) and prompt diversity (decorrelation across attacks).
+This competition . Organizers frames it as an "algorithmic red-teaming challenge" rather than a prompt writing challenge. Rather than try to game the harness, we treated the defensive guardrails as truly unknown within the framework of the competitions provided SDK. In this case, when random seeding dominates any strategy in particular, I argue that the way to maximize payoffs when the underlying distribution is unknown is to use strategies that maximize value on independent criteria, in particular volume (number of prompts delivered within one submission) and diversity (decorrelation across attacks). 
 
 **The methodological contribution is an offline defender-space stress-test rig**
 ([`dev/benchmark/`](dev/benchmark/)) that turns the unobservable private guardrail into an explicit
@@ -19,11 +17,6 @@ method below, not the argument for it.
 The full argument is the runnable working note, [`WORKING_NOTE.ipynb`](WORKING_NOTE.ipynb); every
 number is either computed in a cell or carries a `file:line` citation into the vendored SDK. This
 README is the short version.
-
-> **Scope / responsible communication.** This describes only the offline competition benchmark.
-> There are no instructions for attacking real systems: every "attack" is a scored predicate of the
-> benchmark's own sandbox, and each one is paired with the guardrail change that defeats it (see
-> [Defensive takeaways](#defensive-takeaways)).
 
 ---
 
@@ -173,9 +166,7 @@ splits the decision cleanly in two, and only one half paid.
   all — and *manually* selecting it. This is the single most transferable operational lesson in the
   repo: **the hedge must be selected by hand.** Left to auto-select, Kaggle picks your two best
   *public* submissions, which here would have been two exfil variants that die together under any
-  marker grep. The result would have been a zero, not a rank. The selection document flagged the trap
-  in advance: *"If you leave the final-2 to auto-select, Kaggle picks your two best public
-  submissions = two exfil variants = no hedge."*
+  marker grep. The result would have been a zero, not a rank.
 - **The fine decision was worth nothing.** The `P(share-gate) ≈ 0.41` crossover, the density-vs-
   coverage frontier across v2/v3/v4 — in the world that actually occurred, every variant scored
   identically. The elaborate part of the analysis was moot.
@@ -192,7 +183,6 @@ irrelevant by the world that showed up.
 
 
 ## Turning the invisible defender into a payoff matrix
-
 The reusable, community-useful artifact is the offline defender-space stress-test rig
 ([`dev/benchmark/`](dev/benchmark/)). Mock-compliant agents are driven through the real SDK
 environment and scorer under hypothesized private guardrails, which turns the hidden defender into a
